@@ -1,0 +1,22 @@
+{
+  "name": "fate-pits-dreamdex",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "FATE: Into the Pits — real DreamDEX/Somnia integration (wallet, fight/side settlement, store top-up/cash-out)",
+  "scripts": {
+    "build": "esbuild src/fate-connector.mjs --bundle --format=esm --target=es2020 --outfile=dist/fate-connector.mjs --minify",
+    "build:watch": "esbuild src/fate-connector.mjs --bundle --format=esm --target=es2020 --outfile=dist/fate-connector.mjs --minify --watch"
+  },
+  "dependencies": {
+    "@somnia-chain/markets-sdk": "^0.28.1",
+    "viem": "^2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  },
+  "peerDependenciesMeta": {
+    "@somnia-chain/reactivity": { "optional": true },
+    "react": { "optional": true }
+  }
+}
