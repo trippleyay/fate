@@ -512,6 +512,22 @@ const Persist = {
     if(this.hasArtifactStorage){ try{ await window.storage.delete('save-game', false); }catch(e){} }
     else { try{ localStorage.removeItem('pits-save-game'); }catch(e){} }
   },
+  /* Match log persists ACROSS games and even "Reset All" — it is the literal
+     verifiable history of every settled DreamDEX market result. Stored in its
+     own key, decoupled from the per-game save object. */
+  async getMatchLog(){
+    if(this.hasArtifactStorage){
+      try{ const r = await window.storage.get('pits-match-log', false); if(r && r.value) return JSON.parse(r.value); }catch(e){}
+    } else {
+      try{ const v = localStorage.getItem('pits-match-log'); if(v) return JSON.parse(v); }catch(e){}
+    }
+    return [];
+  },
+  async saveMatchLog(entries){
+    const json = JSON.stringify(entries);
+    if(this.hasArtifactStorage){ try{ await window.storage.set('pits-match-log', json, false); }catch(e){} }
+    else { try{ localStorage.setItem('pits-match-log', json); }catch(e){} }
+  },
   /* One-time anonymous sign-in so RLS recognizes this player. supabase-js
      persists the refresh token, so this is cheap on repeat visits. */
   async ensureAuth(){
@@ -1235,6 +1251,10 @@ let STATE = freshState(); // initialized at boot — connect() overwrites fate w
 
 let LB_CACHE = [];
 let PLAYER_ID = null;
+let MATCH_LOG = []; // settled-market history — persists across games (Market Log)
+
+// Load the persistent match log once at boot (independent of the game save).
+try{ Persist.getMatchLog().then(log => { if(Array.isArray(log)) MATCH_LOG = log; }); }catch(e){}
 
 function freshState(){
   return {
@@ -1414,8 +1434,9 @@ function renderHome(){
   out += optRow(2,"New Game","home-new");
   out += optRow(3,"Leaderboard","home-lb");
   out += optRow(4,"Store","home-store");
-  out += optRow(5,"Settings","home-settings");
-  out += optRow(6,"About","home-about");
+  out += optRow(5,"Market Log","home-marketlog");
+  out += optRow(6,"Settings","home-settings");
+  out += optRow(7,"About","home-about");
   out += '</div></div>';
   out += '<div class="fate-note" style="text-align:center">Saltmark, The Trench. Basement level. One floor legal. Everything below that is not.</div>';
   out += '</div>';
@@ -1583,15 +1604,23 @@ function applyFightResult(fighter, result){
 }
 
 function recordMatchHistory(m, settleRes){
-  STATE.matchHistory.unshift({
+  addToMatchLog({
     escrowId: m.escrowId, marketId: m.marketId,
     question: settleRes.market?.question || m.question || "",
+    asset: settleRes.market?.asset || m.asset || "",
     kind: m.kind, side: settleRes.market?.side || m.side,
+    winningOutcome: settleRes.market?.winningOutcome || null,
     title: m.title, stake: m.stake, payout: settleRes.payout ?? 0,
     won: !!settleRes.won, settledAt: Date.now(),
     resolvedAt: settleRes.market?.resolvedAt || null,
   });
-  if(STATE.matchHistory.length>100) STATE.matchHistory.length=100;
+}
+/* Persistent, cross-game settled market log (Market Log screen / Home menu).
+   Decoupled from the per-game save so New Game / Reset All never clear it. */
+function addToMatchLog(entry){
+  MATCH_LOG.unshift(entry);
+  if(MATCH_LOG.length>100) MATCH_LOG.length=100;
+  Persist.saveMatchLog(MATCH_LOG);
 }
 
 async function lockInFight(){
@@ -1681,7 +1710,7 @@ async function cancelPending(escrowId){
   const idx = STATE.pendingMatches.findIndex(m=>m.escrowId===escrowId);
   if(idx>=0){
     const m = STATE.pendingMatches[idx];
-    STATE.matchHistory.unshift({
+    addToMatchLog({
       escrowId:m.escrowId, marketId:m.marketId, question:m.question||"",
       kind:m.kind, side:m.side, title:m.title, stake:m.stake, payout:0,
       won:null, voided:true, settledAt:Date.now(), resolvedAt:null,
@@ -1963,15 +1992,17 @@ function renderMarketLog(){
   let out = '<div class="screen">';
   out += statusPanel();
   out += '<div class="panel" data-label="MARKET LOG — VERIFY THE ODDS">';
-  out += '<div class="story-text">Every Fate match is settled by a real DreamDEX prediction market. The result you see is the market\'s on-chain winningOutcome — nothing in this game picks winners. Verify any entry against the indexer:\n'+esc(DREAMDEX_INDEXER)+'</div>';
-  if(STATE.matchHistory.length===0){
-    out += '<div class="story-text">No settled matches yet.</div>';
+  out += '<div class="story-text">Every Fate match is settled by a real DreamDEX prediction market — the result shown is the market\'s on-chain winningOutcome.</div>';
+  if(MATCH_LOG.length===0){
+    out += '<div class="story-text">No settled matches yet. Book a fight or drop a side bet — results land here once their DreamDEX market closes.</div>';
   } else {
-    const rows = STATE.matchHistory.slice(0,25).map(h=>{
+    const rows = MATCH_LOG.slice(0,25).map(h=>{
       const outcome = h.voided ? "VOIDED — stake refunded"
         : (h.won ? "WON (paid "+h.payout+" Fate)" : "LOST");
       const when = h.resolvedAt ? new Date(h.resolvedAt).toLocaleString() : new Date(h.settledAt).toLocaleString();
-      return h.title+"\n  "+(h.kind==="fight_stake"?"Fight Night":"Side Bet")+" · "+h.stake+" Fate on "+(h.side||"?")+"\n  market: "+(h.marketId||"—")+"\n  question: "+(h.question||"—")+"\n  result: "+outcome+"\n  resolved: "+when;
+      const yourSide = h.side ? h.side.toUpperCase() : "—";
+      const wonSide = h.winningOutcome ? h.winningOutcome.toUpperCase() : "—";
+      return h.title+"\n  "+(h.kind==="fight_stake"?"Fight Night":"Side Bet")+" · "+h.stake+" Fate on "+yourSide+"\n  market: "+(h.marketId||"—")+(h.asset?" ("+h.asset+")":"")+"\n  question: "+(h.question||"—")+"\n  result: "+outcome+"\n  market resolved: "+wonSide+" at "+when;
     });
     out += boxHtml("SETTLED BY THE ODDS", rows, 60);
   }
@@ -2134,6 +2165,7 @@ async function onAction(e){
   if(action==="home-new"){ STATE = freshState(); saveNow(); await refreshLeaderboard(); goto("main"); return; }
   if(action==="home-lb"){ await refreshLeaderboard(); goto("lb"); return; }
   if(action==="home-store"){ if(!STATE) STATE = freshState(); goto("store"); return; }
+  if(action==="home-marketlog"){ goto("marketlog"); return; }
   if(action==="home-settings"){ goto("settings"); return; }
   if(action==="home-about"){ goto("about"); return; }
   if(action==="back-home"){ goto("home"); return; }
