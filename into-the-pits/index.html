@@ -620,12 +620,10 @@ const Fate = {
   /* Lock a stake in the Teller escrow, pinned to a real DreamDEX market.
      Returns {escrowId, market} on success, null offline/failed. */
   async stake(kind, side, marketId, meta, marketExpiresAt){
-    if(!Fate.live) return null;
-    try{
-      const r = await window.FateConnector.stakeFate(FATE_STAKE, kind, side, marketId, meta, marketExpiresAt);
-      STATE.fate = r.fate; saveNow();
-      return r;
-    }catch(e){ console.warn("stake failed:", e.message); return null; }
+    if(!Fate.live) throw new Error("Wallet not connected — enter the Pit first.");
+    const r = await window.FateConnector.stakeFate(FATE_STAKE, kind, side, marketId, meta, marketExpiresAt);
+    STATE.fate = r.fate; saveNow();
+    return r;
   },
 
   /* Settle an escrow. The Teller reads the pinned market's real resolution —
@@ -1635,7 +1633,13 @@ async function lockInFight(){
   }
   if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
   const meta = { fighter: fighter.name, fighterId: fighter.id, opponent: opponent.name, matchTitle: fighter.name+" vs "+opponent.name };
-  const r = await Fate.stake("fight_stake","YES",market.marketId,meta,new Date(market.expiryMs).toISOString());
+  let r;
+  try{
+    r = await Fate.stake("fight_stake","YES",market.marketId,meta,new Date(market.expiryMs).toISOString());
+  }catch(err){
+    alert("Could not stake Fate — "+(err.message||"unknown reason")+". The match was not booked.");
+    render(); return;
+  }
   if(r && r.escrowId){
     STATE.pendingMatches.push({
       escrowId:r.escrowId, marketId:market.marketId, question:market.question,
@@ -1647,8 +1651,7 @@ async function lockInFight(){
     goto("fightResolve",{fighter,opponent,booked:true,expiresAt:market.expiryMs});
     return;
   }
-  /* NO offline exhibition: a fight only happens when the stake is escrowed. */
-  alert("Could not stake Fate — the match was not booked. Check your wallet/Teller connection.");
+  alert("Could not stake Fate — the match was not booked for an unknown reason. Try again.");
   render();
 }
 
@@ -1689,7 +1692,13 @@ async function rematchPending(escrowId){
   }
   if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
   const meta = { matchTitle: old.title, fighter: (old.title||"").split(" vs ")[0], opponent: (old.title||"").split(" vs ")[1]||"" };
-  const r = await Fate.stake(old.kind, old.side, market.marketId, meta, new Date(market.expiryMs).toISOString());
+  let r;
+  try{
+    r = await Fate.stake(old.kind, old.side, market.marketId, meta, new Date(market.expiryMs).toISOString());
+  }catch(err){
+    alert("Rematch failed: "+(err.message||"unknown reason")+". Original escrow left untouched.");
+    render(); return;
+  }
   if(r && r.escrowId){
     STATE.pendingMatches.splice(idx,1);
     STATE.pendingMatches.push({
@@ -1724,12 +1733,18 @@ async function cancelPending(escrowId){
 /* Poll every pending escrow's pinned market via the Teller. */
 async function refreshPending(){
   if(!Fate.live){ render(); return; }
+  let changed = false;
   for(const m of STATE.pendingMatches){
     const c = await Fate.check(m.escrowId);
-    if(c) m._check = c;
+    if(c){
+      if(m._check && (m._check.stateped !== c.stateped)){ changed = true; }
+      m._check = c;
+      const el = document.querySelector('span.cd[data-cd="'+m.escrowId+'"]');
+      if(el){ el.textContent = m.expiresAt ? fmtCountdown(m.expiresAt - Date.now()) : "unknown"; }
+    }
   }
   saveNow();
-  render();
+  if(changed){ render(); }
 }
 
 function renderBook(){
@@ -1893,7 +1908,13 @@ async function resolveSideBetChoice(side){
   const marketSide = (side===a.id) ? "YES" : "NO";
   const title = a.name+" vs "+b.name;
   const meta = { matchTitle:title, fighter:(side===a.id)?a.name:b.name, opponent:(side===a.id)?b.name:a.name };
-  const r = await Fate.stake("side_bet", marketSide, market.marketId, meta, new Date(market.expiryMs).toISOString());
+  let r;
+  try{
+    r = await Fate.stake("side_bet", marketSide, market.marketId, meta, new Date(market.expiryMs).toISOString());
+  }catch(err){
+    alert("Could not stake Fate — "+(err.message||"unknown reason")+". The bet was not placed.");
+    render(); return;
+  }
   if(r && r.escrowId){
     STATE.pendingMatches.push({
       escrowId:r.escrowId, marketId:market.marketId, question:market.question,
@@ -1904,8 +1925,7 @@ async function resolveSideBetChoice(side){
     goto("sideResolve",{side, pair, pending:true, expiresAt:market.expiryMs});
     return;
   }
-  /* NO offline roll: a side bet only exists when the stake is escrowed. */
-  alert("Could not stake Fate — the bet was not placed. Check your wallet/Teller connection.");
+  alert("Could not stake Fate — the bet was not placed for an unknown reason. Try again.");
   render();
 }
 function renderSideResolve(){
@@ -1938,6 +1958,10 @@ function fmtCountdown(ms){
   const m = Math.floor(ms/60000), s = Math.floor((ms%60000)/1000);
   return m > 0 ? m+"m "+s+"s" : s+"s";
 }
+function spanC(id, text){
+  return '<span class="cd" data-cd="'+id+'">'+text+'</span>';
+}
+
 function renderPending(){
   let out = '<div class="screen">';
   out += statusPanel();
@@ -1960,7 +1984,7 @@ function renderPending(){
         actions = optRow(1,"See the result","settle-pending-"+m.escrowId);
       } else {
         const left = m.expiresAt ? fmtCountdown(m.expiresAt - Date.now()) : "unknown";
-        status = "Odds open — closes in "+left+".";
+        status = "Odds open — closes in "+spanC(m.escrowId, left)+".";
       }
       out += '<div class="story-text"><b>'+esc(m.title)+'</b> ('+(m.kind==="fight_stake"?"Fight Night":"Side Bet")+', '+m.stake+' Fate)\n'+esc(status)+'</div>';
       if(actions) out += '<div class="options">'+actions+'</div>';

@@ -296,11 +296,15 @@ async function route(req: Request): Promise<Response> {
     await credit(wallet, "cashout", -amount);
     const tusdcOut = (amount * BigInt(10 ** TUSDC_DECIMALS)) / FATE_PER_TUSDC;
     try {
+      // Fetch nonce explicitly from chain to avoid "nonce too low" when the
+      // wallet client's in-memory nonce gets out of sync.
+      const nonce = await publicClient.getTransactionCount({ address: teller.account.address });
       const hash = await teller.writeContract({
         address: TUSDC,
         abi: erc20Abi,
         functionName: "transfer",
         args: [wallet as `0x${string}`, tusdcOut],
+        nonce,
       });
       await admin.from("fate_quotas").upsert({ wallet_address: wallet, day: today, total_cashout: Number(cashedToday + amount) }, { onConflict: "wallet_address,day" });
       return json({ fate: Number((await getLedger(wallet)).fate_balance), txHash: hash });
