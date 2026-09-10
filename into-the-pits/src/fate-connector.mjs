@@ -81,12 +81,17 @@ async function connect() {
 }
 
 // -------------------------------------------------------------- wallet bind
+// Nonce + personal_sign handshake. Two hard requirements from the Teller:
+//  1. the nonce travels in the link payload (a hex signature carries no text)
+//  2. the signed text must be EXACTLY the Teller's SIGNING_MESSAGE format —
+//     otherwise the recovered signer won't match the address.
 async function bind() {
   await requireConnected();
   const { nonce } = await teller("nonce");
-  const message = `FATE: Into the Pits\nBind wallet to account\nNonce: ${nonce}`;
+  if (!nonce) throw new Error("Teller did not issue a nonce.");
+  const message = `FATE: bind wallet to your account\nnonce:${nonce}`; // Teller's SIGNING_MESSAGE, verbatim
   const signature = await walletClient.signMessage({ account: address, message });
-  return teller("link", { address, signature });
+  return teller("link", { address, signature, nonce: String(nonce ?? ""), signedMessage: message });
 }
 
 // ------------------------------------------------------------------- state

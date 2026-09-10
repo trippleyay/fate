@@ -192,19 +192,33 @@ async function marketOutcomeFor(marketId: string, side: string): Promise<
 // Route
 // ---------------------------------------------------------------------------
 async function route(req: Request): Promise<Response> {
-  const { action, address, signature, txHash, fateAmount, kind, side, marketId, marketExpiresAt, meta, escrowId, won, payoutFate } = await req.json();
+  const { action, address, signature, nonce, signedMessage, txHash, fateAmount, kind, side, marketId, marketExpiresAt, meta, escrowId, won, payoutFate } = await req.json();
   const sub = await authSub(req);
 
   // ------------------------------------------------------------------ nonce
   if (action === "nonce") return json({ nonce: await makeNonce(sub) });
 
   // ------------------------------------------------------------------- link
+  // Binds sub -> wallet. The client sends the nonce EXPLICITLY (a hex EIP-191
+  // signature never contains readable text, so extracting it from the
+  // signature was impossible); the nonce text may alternatively arrive inside
+  // the signed message. Verification reconstructs SIGNING_MESSAGE(nonce) and
+  // recovers the signer, so the wallet must have signed EXACTLY that text.
   if (action === "link") {
     if (!address || !signature) return fail("address and signature required");
-    const nonce = signature.includes("FATE:") ? signature.replace(/^.*FATE:/, "").trim() : "";
-    if (!nonce) return fail("no nonce in message");
-    if (!(await nonceValid(sub, nonce))) return fail("nonce expired or invalid");
-    const recovered = await verifyMessage({ address, message: SIGNING_MESSAGE(nonce), signature });
+    const extracted = (typeof nonce === "string" && nonce.trim())
+      ? nonce.trim()
+      : (typeof signedMessage === "string" && signedMessage.includes("nonce:"))
+        ? signedMessage.split("nonce:")[1].trim()
+        : "";
+    if (!extracted) {
+      return fail(
+        `no nonce in link payload — received nonce=${JSON.stringify(nonce ?? null)}, ` +
+        `signedMessage=${JSON.stringify(typeof signedMessage === "string" ? signedMessage.slice(0, 80) : signedMessage ?? null)}`,
+      );
+    }
+    if (!(await nonceValid(sub, extracted))) return fail("nonce expired or invalid");
+    const recovered = await verifyMessage({ address, message: SIGNING_MESSAGE(extracted), signature });
     if (!recovered) return fail("signature does not match address", 401);
     const wallet = address.toLowerCase();
     const { data: existing } = await admin.from("fate_wallet_links").select("sub").eq("wallet_address", wallet).maybeSingle();
