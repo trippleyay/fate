@@ -164,6 +164,15 @@
   }
   .fate-note{font-size:10px; color:var(--text-dim); margin-top:2px;}
 
+  .connect-status{display:flex; align-items:center; gap:10px; justify-content:center; margin:18px 0 4px; min-height:22px;}
+  .connect-status #connect-status-text{font-size:13px; color:var(--text-dim);}
+  .spinner{
+    width:16px; height:16px; flex:0 0 16px; border-radius:50%;
+    border:2px solid var(--line-dim); border-top-color:var(--amber);
+    animation:spin-glow 0.9s linear infinite;
+  }
+  @keyframes spin-glow{to{transform:rotate(360deg);}}
+
   .banner-holder{
     text-align:center;
     margin:18px 0;
@@ -271,7 +280,7 @@
   tellerUrl: "https://ieplmortssxjiecsaafh.supabase.co/functions/v1/teller",
   supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllcGxtb3J0c3N4amllY3NhYWZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MjcwMTAsImV4cCI6MjEwNDMwMzAxMH0.eyArKBIcA_sMCr7dbfbz-SfW3jzoV7OuueeFLykeqwk"
 };</script>
-<script type="module" src="./dist/fate-connector.mjs?v=5"></script>
+<script type="module" src="./dist/fate-connector.mjs?v=7"></script>
 <script>
 /* =========================================================================
    FATE: INTO THE PITS
@@ -573,6 +582,9 @@ const Fate = {
         : "Connector module did not finish loading. Hard-refresh the page (Ctrl+Shift+R) and try again.");
     }
     fc.configure({ tellerUrl: TELLER_URL, supabaseAnonKey: window.FATE_CONFIG.supabaseAnonKey });
+    /* The Teller calls need an anonymous Supabase session for auth. On a fresh
+       browser there is none yet — ensure one exists BEFORE any teller() call. */
+    await Persist.ensureAuth();
     const { address } = await fc.connect();
     await fc.bind();                       // prove wallet ownership (personal_sign)
     const st = await fc.state();
@@ -1374,6 +1386,7 @@ function renderWalletConnect(){
   out += '<div class="title-wrap title-wrap-splash">'+TITLE_BANNER_HTML+'</div>';
   if(stage==="connecting"){
     out += '<div class="story-text">Reaching out to your wallet provider...</div>';
+    out += '<div class="connect-status"><span class="spinner"></span><span id="connect-status-text">Requesting your wallet account…</span></div>';
     out += '<button class="enter-prompt" data-action="wallet-confirm">[ENTER] CONFIRM CONNECTION</button>';
     out += '<div class="wallet-line">A valid wallet connection is required to enter the Pit.</div>';
   } else if(stage==="error"){
@@ -2084,6 +2097,11 @@ async function onAction(e){
     /* HARD GATE: a valid wallet connection (connect + bind + Teller state) is
        required. Any failure is shown on screen and the player cannot proceed. */
     goto("walletConnect", {stage:"connecting"});
+    const setStatus = (msg) => { const el = document.getElementById("connect-status-text"); if(el) el.textContent = msg; };
+    setStatus("Requesting your wallet account…");
+    if(window.FateConnector && typeof window.FateConnector.setProgress === "function"){
+      window.FateConnector.setProgress(setStatus);
+    }
     try{
       await Fate.connect();
       if(!Fate.live || !Fate.wallet) throw new Error("Connection did not complete.");

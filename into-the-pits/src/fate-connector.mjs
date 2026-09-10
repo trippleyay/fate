@@ -31,6 +31,13 @@ let walletClient = null;
 let publicClient = null;
 let exchange = null;
 let address = null;
+let onProgress = null; // (message: string) => void — UI hook to show live connect progress
+
+function report(msg) {
+  if (typeof onProgress === "function") {
+    try { onProgress(msg); } catch { /* ignore */ }
+  }
+}
 
 // ------------------------------------------------------------------ helpers
 function requireWallet() {
@@ -61,11 +68,52 @@ async function teller(action, payload = {}) {
   return body;
 }
 
+// ------------------------------------------------------------------ chain
+// Somnia Testnet params for EIP-3326 wallet_switchEthereumChain / wallet_addEthereumChain.
+const CHAIN_ID_HEX = `0x${CHAIN.id.toString(16)}`; // 50312 -> 0xc488
+const CHAIN_PARAMS = {
+  chainId: CHAIN_ID_HEX,
+  chainName: "Somnia Testnet (Shannon)",
+  nativeCurrency: { name: "STT", symbol: "STT", decimals: 18 },
+  rpcUrls: [RPC_HTTP],
+  blockExplorerUrls: ["https://shannon-explorer.somnia.network"],
+};
+
+// Make sure the connected wallet is on the Somnia testnet. Without this every
+// on-chain call (buy transfer, SDK loadMarkets currency reads, mint/redeem,
+// settle) targets the wrong chain and fails — and the SDK silently drops the
+// binary markets whose collateral reads crash. So this must run BEFORE
+// loadMarkets().
+async function ensureChain() {
+  const current = await window.ethereum.request({ method: "eth_chainId" });
+  if (String(current).toLowerCase() === CHAIN_ID_HEX) return;
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: CHAIN_ID_HEX }],
+    });
+  } catch (e) {
+    if (e?.code === 4902) {
+      // Chain not added to the wallet yet — add it, then switch.
+      await window.ethereum.request({ method: "wallet_addEthereumChain", params: [CHAIN_PARAMS] });
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_ID_HEX }] });
+    } else {
+      throw new Error(
+        `Please switch MetaMask to the Somnia Testnet (chain ${CHAIN.id}) and retry. ` +
+        `Your wallet is on chain ${Number(current) || current}. (${e?.message ?? e})`,
+      );
+    }
+  }
+}
+
 // ------------------------------------------------------------------ connect
 async function connect() {
   requireWallet();
+  report("Requesting your wallet account…");
   const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
   address = accounts[0];
+  report("Switching to Somnia Testnet (chain 50312)…");
+  await ensureChain();
   walletClient = createWalletClient({ account: address, chain: CHAIN, transport: custom(window.ethereum) });
   publicClient = createPublicClient({ chain: CHAIN, transport: http(RPC_HTTP) });
   // The player's wallet is the signer; the SDK signs every trade through it.
@@ -76,7 +124,9 @@ async function connect() {
     addresses: SOMNIA_TESTNET_ADDRESSES,
     walletClient,
   });
+  report("Loading DreamDEX markets…");
   await exchange.loadMarkets();
+  report("Connected. Signing wallet bind…");
   return { address };
 }
 
@@ -87,10 +137,13 @@ async function connect() {
 //     otherwise the recovered signer won't match the address.
 async function bind() {
   await requireConnected();
+  report("Requesting bind nonce…");
   const { nonce } = await teller("nonce");
   if (!nonce) throw new Error("Teller did not issue a nonce.");
   const message = `FATE: bind wallet to your account\nnonce:${nonce}`; // Teller's SIGNING_MESSAGE, verbatim
+  report("Awaiting your signature in MetaMask…");
   const signature = await walletClient.signMessage({ account: address, message });
+  report("Confirming wallet link with the Teller…");
   return teller("link", { address, signature, nonce: String(nonce ?? ""), signedMessage: message });
 }
 
@@ -152,31 +205,50 @@ async function listEscrows() {
 // in the future; sorted by soonest expiry.
 async function findActiveMarket() {
   await requireConnected();
-  const now = Date.now();
-  const binary = exchange.symbols.map((s) => exchange.market(s)).filter((m) => m && m.marketType === "BINARY");
-  if (!binary.length) {
+  const now = Math.floor(Date.now() / 1000);
+  // Discover markets via the indexer DIRECTLY (not the SDK's hydrated
+  // `exchange.symbols`, which does not surface binary markets even on the
+  // correct chain). GraphQL rows are the same data `getBinaryMarkets` used to
+  // show — PIT-verified live BINARY markets with future expiry.
+  const query = `query { Market(
+      where: {
+        marketType: { _eq: "BINARY" },
+        voided: { _eq: false },
+        winningOutcome: { _is_null: true },
+        expiry: { _gt: ${now + 30} }
+      },
+      limit: 20,
+      order_by: { expiry: asc }
+    ) {
+      marketId
+      question
+      marketAddress
+      expiry
+    }
+  }`;
+  let rows;
+  try {
+    const res = await fetch(INDEXER, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+    const body = await res.json();
+    rows = body?.data?.Market ?? [];
+  } catch (e) {
+    throw new Error(`DreamDEX indexer unreachable: ${e?.message ?? e}`);
+  }
+  if (!rows.length) {
     throw new Error(
-      "DreamDEX returned no binary markets — the indexer may be empty, unreachable, " +
-      `or the SDK failed to hydrate (${exchange.symbols.length} non-binary symbols total). ` +
-      "This is NOT a wallet problem; you are connected.",
+      "No active binary markets on DreamDEX right now (indexer reached, returned 0 open/unresolved/future markets). " +
+      "This is genuinely market availability, not a wallet or connection problem.",
     );
   }
-  const stillOpen = binary.filter((m) => !m.voided && m.winningOutcome == null);
-  const valid = stillOpen
-    .filter((m) => Number(m.expiry) * 1000 > now + 30_000) // still open >= 30s
-    .sort((a, b) => a.expiry - b.expiry);
-  const m = valid[0];
-  if (!m) {
-    throw new Error(
-      `No ACTIVE binary market right now: ${binary.length} found, ` +
-      `${binary.length - stillOpen.length} already resolved/voided, ${stillOpen.length} still ` +
-      `open but none with expiry > 30s ahead. This is genuinely market availability, not a wallet issue.`,
-    );
-  }
+  const m = rows[0];
   return {
     marketId: m.marketId,
     question: m.question,
-    asset: m.asset,
+    asset: (m.asset ?? ""),
     expiry: Number(m.expiry),
     expiryMs: Number(m.expiry) * 1000,
   };
@@ -251,7 +323,9 @@ export async function close() {
 }
 
 export const FateConnector = {
-  configure, connect, bind, state,
+  configure,
+  setProgress(cb) { onProgress = cb; },
+  connect, bind, state,
   buyFate, cashOutFate, stakeFate, settleStake,
   checkResolution, cancelEscrow, listEscrows, findActiveMarket,
   getBinaryMarkets, getMarket, getMarketOutcome,
