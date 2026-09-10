@@ -394,7 +394,7 @@ function drawBox(title, lines, minWidth){
   return out.join("\n");
 }
 function boxHtml(title, lines, minWidth){
-  const raw = drawBox(title, lines.map(esc), minWidth);
+  const raw = drawBox(title, lines.map(l => l.startsWith('%%RAW%%') ? l.slice(7) : esc(l)), minWidth);
   // colorize title line + borders lightly
   const rows = raw.split("\n").map((r,i)=>{
     if(i===0 || i===raw.split("\n").length-1 || (title && i===2)) return '<span class="b-line">'+r+'</span>';
@@ -614,6 +614,7 @@ const Fate = {
     if(!Fate.live) return;
     try{ const st = await window.FateConnector.state();
       STATE.fate = st.fate; Fate.cashable = st.cashable || 0; saveNow();
+      render();
     }catch(e){}
   },
 
@@ -1959,7 +1960,7 @@ function fmtCountdown(ms){
   return m > 0 ? m+"m "+s+"s" : s+"s";
 }
 function spanC(id, text){
-  return '<span class="cd" data-cd="'+id+'">'+text+'</span>';
+  return '%%RAW%%<span class="cd" data-cd="'+id+'">'+text+'</span>';
 }
 
 function renderPending(){
