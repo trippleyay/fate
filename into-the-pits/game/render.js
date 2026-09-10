@@ -957,12 +957,12 @@ async function onAction(e){
   if(action==="cashout"){
     const input = document.getElementById('cashout-amt');
     const amt = parseInt(input.value,10);
-    if(amt && amt>0 && amt<=STATE.fate){
-      if(!Fate.live){ goto("store", {msg:"Connect a wallet first."}); return; }
-      Fate.cashout(amt)
-        .then(() => render())
-        .catch(err => alert("Cash out failed: "+err.message));
-    }
+    if(!amt || amt<=0){ return; }
+    if(amt>STATE.fate){ alert("Insufficient Fate balance — you have "+STATE.fate+" Fate."); return; }
+    if(!Fate.live){ goto("store", {msg:"Connect a wallet first."}); return; }
+    Fate.cashout(amt)
+      .then(() => { alert("Cash out successful! tUSDC has been sent to your wallet."); render(); })
+      .catch(err => alert("Cash out failed: "+err.message));
     return;
   }
 }

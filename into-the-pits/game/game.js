@@ -1,4 +1,7 @@
 document.addEventListener('keydown', (e)=>{
+  // Ignore keystrokes when typing in inputs (e.g. cashout amount field)
+  const tag = e.target && e.target.tagName;
+  if(tag==="INPUT" || tag==="TEXTAREA" || tag==="SELECT") return;
   if(e.key==="Enter"){
     const enterBtn = app.querySelector('.enter-prompt');
     if(enterBtn){ enterBtn.click(); return; }

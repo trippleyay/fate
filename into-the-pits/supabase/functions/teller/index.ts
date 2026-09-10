@@ -221,9 +221,10 @@ async function route(req: Request): Promise<Response> {
     const recovered = await verifyMessage({ address, message: SIGNING_MESSAGE(extracted), signature });
     if (!recovered) return fail("signature does not match address", 401);
     const wallet = address.toLowerCase();
-    const { data: existing } = await admin.from("fate_wallet_links").select("sub").eq("wallet_address", wallet).maybeSingle();
-    if (existing && existing.sub !== sub) return fail("wallet already bound to another account", 409);
-    await admin.from("fate_wallet_links").upsert({ sub, wallet_address: wallet }, { onConflict: "sub" });
+    // Allow re-binding: if the wallet is bound to another account (e.g. user cleared
+    // cache and got a new anonymous account), transfer the binding to the new account.
+    // The FATE ledger is keyed by wallet_address, so the balance follows the wallet.
+    await admin.from("fate_wallet_links").upsert({ sub, wallet_address: wallet }, { onConflict: "wallet_address" });
     await getLedger(wallet);
     return json({ wallet });
   }
