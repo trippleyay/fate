@@ -240,3 +240,6 @@ export const FateConnector = {
   get address() { return address; },
   close,
 };
+
+// Expose the connector on window so the game page (index.html) can reach it.
+window.FateConnector = FateConnector;

@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FATE: Into the Pits</title>
-<style>
 <link rel="icon" href="./public/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" href="./public/favicon.png">
 <link rel="apple-touch-icon" href="./public/favicon.png">
+<style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
   :root{
@@ -272,7 +272,7 @@
   tellerUrl: "https://ieplmortssxjiecsaafh.supabase.co/functions/v1/teller",
   supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllcGxtb3J0c3N4amllY3NhYWZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MjcwMTAsImV4cCI6MjEwNDMwMzAxMH0.eyArKBIcA_sMCr7dbfbz-SfW3jzoV7OuueeFLykeqwk"
 };</script>
-<script type="module" src="./dist/fate-connector.mjs"></script>
+<script type="module" src="./dist/fate-connector.mjs?v=2"></script>
 <script>
 /* =========================================================================
    FATE: INTO THE PITS
@@ -556,8 +556,8 @@ const FATE_STAKE = 100; // fixed stake per Fight Night call / Side Bet
    - window.ethereum (player's wallet; keys never leave it)
    - the DreamDEX Somnia testnet SDK (live binary markets)
    - the Teller edge function (server-authoritative Fate ledger)
-   The bridge below degrades gracefully: if no wallet is installed or the
-   Teller is unreachable, the game falls back to offline play. */
+   NO OFFLINE MODE: connect() throws on any failure and callers must surface
+   the error — the game cannot be played without a valid wallet connection. */
 const Fate = {
   live: false,
   wallet: null,
@@ -565,17 +565,19 @@ const Fate = {
 
   async connect(){
     const fc = window.FateConnector;
-    if(!fc) return false;
-    try{
-      fc.configure({ tellerUrl: TELLER_URL, supabaseAnonKey: window.FATE_CONFIG.supabaseAnonKey });
-      const { address } = await fc.connect();
-      await fc.bind();                       // prove wallet ownership (personal_sign)
-      const st = await fc.state();
-      Fate.live = true; Fate.wallet = address;
-      Fate.cashable = st.cashable || 0;
-      if(typeof st.fate === "number") STATE.fate = st.fate;  // server wins
-      return true;
-    }catch(e){ console.warn("Fate bridge offline:", e.message); Fate.live = false; return false; }
+    if(!fc){
+      throw new Error(!window.ethereum
+        ? "No wallet found in this browser. Install/enable MetaMask and reload."
+        : "Connector module did not finish loading. Hard-refresh the page (Ctrl+Shift+R) and try again.");
+    }
+    fc.configure({ tellerUrl: TELLER_URL, supabaseAnonKey: window.FATE_CONFIG.supabaseAnonKey });
+    const { address } = await fc.connect();
+    await fc.bind();                       // prove wallet ownership (personal_sign)
+    const st = await fc.state();
+    Fate.live = true; Fate.wallet = address;
+    Fate.cashable = st.cashable || 0;
+    if(typeof st.fate === "number") STATE.fate = st.fate;  // server wins
+    return true;
   },
 
   async sync(){
@@ -1370,7 +1372,12 @@ function renderWalletConnect(){
   if(stage==="connecting"){
     out += '<div class="story-text">Reaching out to your wallet provider...</div>';
     out += '<button class="enter-prompt" data-action="wallet-confirm">[ENTER] CONFIRM CONNECTION</button>';
-    out += '<div class="wallet-line">(Placeholder handshake — real wallet wiring drops in here later without touching the rest of the game.)</div>';
+    out += '<div class="wallet-line">A valid wallet connection is required to enter the Pit.</div>';
+  } else if(stage==="error"){
+    out += '<div class="story-text" style="color:var(--red)">CONNECTION FAILED</div>';
+    out += '<div class="wallet-line" style="max-width:560px">'+esc(SCREEN_DATA.error||"Unknown error")+'</div>';
+    out += '<button class="enter-prompt" data-action="wallet-confirm" style="margin-top:22px">[ENTER] TRY AGAIN</button>';
+    out += '<button class="navbtn" data-action="back-splash" style="margin-top:14px">Back</button>';
   } else {
     out += '<div class="story-text">Wallet connected.</div>';
     out += '<div class="wallet-line" style="margin-top:0">'+esc(PLAYER_ID||"")+'</div>';
@@ -1573,30 +1580,24 @@ function recordMatchHistory(m, settleRes){
 
 async function lockInFight(){
   const {fighter, opponent} = SCREEN_DATA;
-  if(Fate.live && window.FateConnector){
-    const market = await Fate.findMarket();
-    if(market){
-      const meta = { fighter: fighter.name, fighterId: fighter.id, opponent: opponent.name, matchTitle: fighter.name+" vs "+opponent.name };
-      const r = await Fate.stake("fight_stake","YES",market.marketId,meta,new Date(market.expiryMs).toISOString());
-      if(r && r.escrowId){
-        STATE.pendingMatches.push({
-          escrowId:r.escrowId, marketId:market.marketId, question:market.question,
-          kind:"fight_stake", side:"YES", stake:FATE_STAKE,
-          title:meta.matchTitle, fighterId:fighter.id, opponentName:opponent.name,
-          expiresAt:market.expiryMs, placedAt:Date.now(), _check:null,
-        });
-        saveNow();
-        goto("fightResolve",{fighter,opponent,booked:true,expiresAt:market.expiryMs});
-        return;
-      }
-    }
-    /* No live market or Teller unreachable → offline exhibition: the narrative
-       rolls locally and NO Fate moves (nothing was escrowed). */
+  if(!Fate.live){ alert("A valid wallet connection is required to fight."); goto("splash"); return; }
+  const market = await Fate.findMarket();
+  if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
+  const meta = { fighter: fighter.name, fighterId: fighter.id, opponent: opponent.name, matchTitle: fighter.name+" vs "+opponent.name };
+  const r = await Fate.stake("fight_stake","YES",market.marketId,meta,new Date(market.expiryMs).toISOString());
+  if(r && r.escrowId){
+    STATE.pendingMatches.push({
+      escrowId:r.escrowId, marketId:market.marketId, question:market.question,
+      kind:"fight_stake", side:"YES", stake:FATE_STAKE,
+      title:meta.matchTitle, fighterId:fighter.id, opponentName:opponent.name,
+      expiresAt:market.expiryMs, placedAt:Date.now(), _check:null,
+    });
+    saveNow();
+    goto("fightResolve",{fighter,opponent,booked:true,expiresAt:market.expiryMs});
+    return;
   }
-  const result = Math.random()<0.5 ? "WIN" : "LOSS";
-  applyFightResult(fighter, result);
-  SCREEN_DATA.resolved = true; SCREEN_DATA.result = result;
-  pushLeaderboardNow();
+  /* NO offline exhibition: a fight only happens when the stake is escrowed. */
+  alert("Could not stake Fate — the match was not booked. Check your wallet/Teller connection.");
   render();
 }
 
@@ -1819,32 +1820,30 @@ async function resolveSideBetChoice(side){
   if(side==="skip"){ goto("side",{pair:null}); return; }
   const {pair} = SCREEN_DATA;
   const [a,b] = pair;
-  if(Fate.live && window.FateConnector){
-    /* REAL DreamDEX settlement: the bet is pinned to a live binary market.
-       Backing the first listed opponent maps to YES, the second to NO — an
-       arbitrary mapping the player never sees. The Teller settles against the
-       market's on-chain winningOutcome when it resolves. */
-    const market = await Fate.findMarket();
-    if(market){
-      const marketSide = (side===a.id) ? "YES" : "NO";
-      const title = a.name+" vs "+b.name;
-      const meta = { matchTitle:title, fighter:(side===a.id)?a.name:b.name, opponent:(side===a.id)?b.name:a.name };
-      const r = await Fate.stake("side_bet", marketSide, market.marketId, meta, new Date(market.expiryMs).toISOString());
-      if(r && r.escrowId){
-        STATE.pendingMatches.push({
-          escrowId:r.escrowId, marketId:market.marketId, question:market.question,
-          kind:"side_bet", side:marketSide, stake:FATE_STAKE,
-          title, pick:side, expiresAt:market.expiryMs, placedAt:Date.now(), _check:null,
-        });
-        saveNow();
-        goto("sideResolve",{side, pair, pending:true, expiresAt:market.expiryMs});
-        return;
-      }
-    }
-    /* No live market / Teller down → friendly roll, NO Fate moves. */
+  if(!Fate.live){ alert("A valid wallet connection is required to place a side bet."); goto("splash"); return; }
+  /* REAL DreamDEX settlement: the bet is pinned to a live binary market.
+     Backing the first listed opponent maps to YES, the second to NO — an
+     arbitrary mapping the player never sees. The Teller settles against the
+     market's on-chain winningOutcome when it resolves. */
+  const market = await Fate.findMarket();
+  if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
+  const marketSide = (side===a.id) ? "YES" : "NO";
+  const title = a.name+" vs "+b.name;
+  const meta = { matchTitle:title, fighter:(side===a.id)?a.name:b.name, opponent:(side===a.id)?b.name:a.name };
+  const r = await Fate.stake("side_bet", marketSide, market.marketId, meta, new Date(market.expiryMs).toISOString());
+  if(r && r.escrowId){
+    STATE.pendingMatches.push({
+      escrowId:r.escrowId, marketId:market.marketId, question:market.question,
+      kind:"side_bet", side:marketSide, stake:FATE_STAKE,
+      title, pick:side, expiresAt:market.expiryMs, placedAt:Date.now(), _check:null,
+    });
+    saveNow();
+    goto("sideResolve",{side, pair, pending:true, expiresAt:market.expiryMs});
+    return;
   }
-  const result = Math.random()<0.5 ? "WIN" : "LOSS";
-  goto("sideResolve", {side, result, pair});
+  /* NO offline roll: a side bet only exists when the stake is escrowed. */
+  alert("Could not stake Fate — the bet was not placed. Check your wallet/Teller connection.");
+  render();
 }
 function renderSideResolve(){
   const {side, result, pair, pending, expiresAt} = SCREEN_DATA;
@@ -1995,7 +1994,7 @@ function renderStore(){
   let out = '<div class="screen">';
   out += statusPanel();
   out += '<div class="panel" data-label="STORE">';
-  out += '<div class="story-text">Buy Fate with tUSDC straight from your connected wallet — 100 Fate = 1 tUSDC, sent to the Teller escrow and credited after on-chain verification. Cash out converts Fate back to tUSDC, paid from the Teller reserve to your wallet. You can only cash out Fate you actually bought (winnings are house money — they play, but they don\'t leave the Pit).'+(Fate.live?"":"\\n\\nNo wallet connected — runs offline until you connect on the home screen.")+'</div>';
+  out += '<div class="story-text">Buy Fate with tUSDC straight from your connected wallet — 100 Fate = 1 tUSDC, sent to the Teller escrow and credited after on-chain verification. Cash out converts Fate back to tUSDC, paid from the Teller reserve to your wallet. You can only cash out Fate you actually bought (winnings are house money — they play, but they don\'t leave the Pit).</div>';
   out += '<div class="options">';
   FATE_PACKS.forEach((p,i)=>{
     out += optRow(i+1, p.amount+" Fate — "+p.price, "buy-"+p.id);
@@ -2058,19 +2057,35 @@ function bindEvents(){
 async function onAction(e){
   const action = e.currentTarget.getAttribute('data-action');
   if(action==="splash-enter"){ goto("walletConnect", {stage:"connecting"}); return; }
+  if(action==="back-splash"){ goto("splash"); return; }
   if(action==="wallet-confirm"){
     PLAYER_ID = await Persist.getPlayerId();
-    /* Real wallet connect + Teller bind (nonce + personal_sign). Non-blocking:
-       if no wallet is installed the game continues in offline mode. */
-    Fate.connect().then((ok) => {
-      if(ok && Fate.wallet){
+    /* HARD GATE: a valid wallet connection (connect + bind + Teller state) is
+       required. Any failure is shown on screen and the player cannot proceed. */
+    goto("walletConnect", {stage:"connecting"});
+    try{
+      await Fate.connect();
+      if(!Fate.live || !Fate.wallet) throw new Error("Connection did not complete.");
+      if(Fate.wallet){
         PLAYER_ID = "0x"+Fate.wallet.slice(2,6)+"…"+Fate.wallet.slice(-4);
       }
       goto("walletConnect", {stage:"connected"});
-    });
+    }catch(err){
+      Fate.live = false; Fate.wallet = null;
+      goto("walletConnect", {stage:"error", error: err && err.message ? err.message : "Wallet connection failed."});
+    }
     return;
   }
-  if(action==="wallet-continue"){ await refreshLeaderboard(); goto("home"); return; }
+  if(action==="wallet-continue"){
+    /* Defensive: never enter the game without a live wallet session. */
+    if(!Fate.live || !Fate.wallet){
+      goto("walletConnect", {stage:"error", error:"No valid wallet connection. Connect a wallet to enter the Pit."});
+      return;
+    }
+    await refreshLeaderboard();
+    goto("home");
+    return;
+  }
   if(action==="home-continue"){
     const saved = await Persist.loadGame();
     if(saved){ STATE = deserializeState(saved); await refreshLeaderboard(); goto("main"); }
