@@ -272,7 +272,7 @@
   tellerUrl: "https://ieplmortssxjiecsaafh.supabase.co/functions/v1/teller",
   supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllcGxtb3J0c3N4amllY3NhYWZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MjcwMTAsImV4cCI6MjEwNDMwMzAxMH0.eyArKBIcA_sMCr7dbfbz-SfW3jzoV7OuueeFLykeqwk"
 };</script>
-<script type="module" src="./dist/fate-connector.mjs?v=2"></script>
+<script type="module" src="./dist/fate-connector.mjs?v=3"></script>
 <script>
 /* =========================================================================
    FATE: INTO THE PITS
@@ -412,6 +412,9 @@ const sb = (typeof supabase!=="undefined" && SUPABASE_URL && SUPABASE_ANON_KEY)
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
     })
   : null;
+/* The fate-connector module reads the authed client from window.sb
+   (window.supabase is only the CDN library namespace — it has no .auth). */
+window.sb = sb;
 const LEADERBOARD_CONFIGURED = !!sb;
 
 /* HOW CHEATING IS BLOCKED (the production hardening vs. the old wide-open

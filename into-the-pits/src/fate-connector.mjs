@@ -42,7 +42,9 @@ async function requireConnected() {
 }
 
 async function teller(action, payload = {}) {
-  const { data: session } = await window.supabase.auth.getSession();
+  const client = window.sb || window.supabase;
+  if (!client?.auth) throw new Error("Supabase client not available — is supabase-js loaded?");
+  const { data: session } = await client.auth.getSession();
   const jwt = session?.session?.access_token;
   if (!jwt) throw new Error("Not signed in to Supabase — auth session missing.");
   const res = await fetch(CONFIG.tellerUrl, {
