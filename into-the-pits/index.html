@@ -161,7 +161,6 @@
     height:13px;
     margin-right:5px;
     vertical-align:-2px;
-    filter:drop-shadow(0 0 3px rgba(232,179,74,.55));
   }
   .fate-note{font-size:10px; color:var(--text-dim); margin-top:2px;}
 
@@ -272,7 +271,7 @@
   tellerUrl: "https://ieplmortssxjiecsaafh.supabase.co/functions/v1/teller",
   supabaseAnonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImllcGxtb3J0c3N4amllY3NhYWZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg3MjcwMTAsImV4cCI6MjEwNDMwMzAxMH0.eyArKBIcA_sMCr7dbfbz-SfW3jzoV7OuueeFLykeqwk"
 };</script>
-<script type="module" src="./dist/fate-connector.mjs?v=4"></script>
+<script type="module" src="./dist/fate-connector.mjs?v=5"></script>
 <script>
 /* =========================================================================
    FATE: INTO THE PITS
@@ -633,7 +632,7 @@ const Fate = {
   async findMarket(){
     if(!Fate.live) return null;
     try{ return await window.FateConnector.findActiveMarket(); }
-    catch(e){ console.warn("findActiveMarket failed:", e.message); return null; }
+    catch(e){ console.warn("findActiveMarket failed:", e.message); throw e; }  // surface the real reason, never disguise
   },
 
   async buy(tusdcWhole){
@@ -1220,7 +1219,8 @@ const SCENES = {
 /* ---------------------------------------------------------------------
    STATE
    --------------------------------------------------------------------- */
-let STATE = null;
+let STATE = freshState(); // initialized at boot — connect() overwrites fate with the server value ("server wins")
+
 let LB_CACHE = [];
 let PLAYER_ID = null;
 
@@ -1584,7 +1584,13 @@ function recordMatchHistory(m, settleRes){
 async function lockInFight(){
   const {fighter, opponent} = SCREEN_DATA;
   if(!Fate.live){ alert("A valid wallet connection is required to fight."); goto("splash"); return; }
-  const market = await Fate.findMarket();
+  let market;
+  try{
+    market = await Fate.findMarket();
+  }catch(err){
+    alert("No available DreamDEX market: "+(err.message||"unknown reason"));
+    render(); return;
+  }
   if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
   const meta = { fighter: fighter.name, fighterId: fighter.id, opponent: opponent.name, matchTitle: fighter.name+" vs "+opponent.name };
   const r = await Fate.stake("fight_stake","YES",market.marketId,meta,new Date(market.expiryMs).toISOString());
@@ -1632,7 +1638,13 @@ async function rematchPending(escrowId){
   const idx = STATE.pendingMatches.findIndex(m=>m.escrowId===escrowId);
   if(idx<0){ render(); return; }
   const old = STATE.pendingMatches[idx];
-  const market = await Fate.findMarket();
+  let market;
+  try{
+    market = await Fate.findMarket();
+  }catch(err){
+    alert("No available DreamDEX market: "+(err.message||"unknown reason"));
+    render(); return;
+  }
   if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
   const meta = { matchTitle: old.title, fighter: (old.title||"").split(" vs ")[0], opponent: (old.title||"").split(" vs ")[1]||"" };
   const r = await Fate.stake(old.kind, old.side, market.marketId, meta, new Date(market.expiryMs).toISOString());
@@ -1828,7 +1840,13 @@ async function resolveSideBetChoice(side){
      Backing the first listed opponent maps to YES, the second to NO — an
      arbitrary mapping the player never sees. The Teller settles against the
      market's on-chain winningOutcome when it resolves. */
-  const market = await Fate.findMarket();
+  let market;
+  try{
+    market = await Fate.findMarket();
+  }catch(err){
+    alert("No available DreamDEX market: "+(err.message||"unknown reason"));
+    render(); return;
+  }
   if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
   const marketSide = (side===a.id) ? "YES" : "NO";
   const title = a.name+" vs "+b.name;

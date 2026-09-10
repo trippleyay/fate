@@ -237,7 +237,15 @@ async function route(req: Request): Promise<Response> {
     return json({ wallet, fate: Number(ledger.fate_balance), cashable: Number(cashable), events: events ?? [] });
   }
 
+  // ------------------------------------------------------------------- info
+  // Returns public Teller config the client needs before it can build a
+  // buy/cashout tx (the Teller wallet address it must transfer tUSDC to).
+  if (action === "info") {
+    return json({ teller: teller.account.address });
+  }
+
   // -------------------------------------------------------------------- buy
+
   if (action === "buy") {
     if (!txHash) return fail("txHash required");
     const wallet = await boundWallet(sub);

@@ -153,14 +153,26 @@ async function listEscrows() {
 async function findActiveMarket() {
   await requireConnected();
   const now = Date.now();
-  const live = exchange.symbols
-    .map((s) => exchange.market(s))
-    .filter((m) => m && m.marketType === "BINARY")
-    .filter((m) => !m.voided && m.winningOutcome == null)
+  const binary = exchange.symbols.map((s) => exchange.market(s)).filter((m) => m && m.marketType === "BINARY");
+  if (!binary.length) {
+    throw new Error(
+      "DreamDEX returned no binary markets — the indexer may be empty, unreachable, " +
+      `or the SDK failed to hydrate (${exchange.symbols.length} non-binary symbols total). ` +
+      "This is NOT a wallet problem; you are connected.",
+    );
+  }
+  const stillOpen = binary.filter((m) => !m.voided && m.winningOutcome == null);
+  const valid = stillOpen
     .filter((m) => Number(m.expiry) * 1000 > now + 30_000) // still open >= 30s
     .sort((a, b) => a.expiry - b.expiry);
-  const m = live[0];
-  if (!m) return null;
+  const m = valid[0];
+  if (!m) {
+    throw new Error(
+      `No ACTIVE binary market right now: ${binary.length} found, ` +
+      `${binary.length - stillOpen.length} already resolved/voided, ${stillOpen.length} still ` +
+      `open but none with expiry > 30s ahead. This is genuinely market availability, not a wallet issue.`,
+    );
+  }
   return {
     marketId: m.marketId,
     question: m.question,
