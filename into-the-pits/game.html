@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FATE: Into the Pits</title>
 <style>
+<link rel="icon" href="./public/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" href="./public/favicon.png">
+<link rel="apple-touch-icon" href="./public/favicon.png">
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
   :root{
@@ -155,12 +158,10 @@
 
   .fate-icon{
     display:inline-block;
-    width:11px;height:11px;
-    background:var(--amber);
-    transform:rotate(45deg);
-    margin-right:6px;
-    vertical-align:middle;
-    box-shadow:0 0 4px var(--amber);
+    height:13px;
+    margin-right:5px;
+    vertical-align:-2px;
+    filter:drop-shadow(0 0 3px rgba(232,179,74,.55));
   }
   .fate-note{font-size:10px; color:var(--text-dim); margin-top:2px;}
 
@@ -276,7 +277,7 @@
 /* =========================================================================
    FATE: INTO THE PITS
    Single-file terminal-styled build per PITS_FULL_SPEC.md + PITS_BUILD_GUIDE.md
-   Fate icon: placeholder (diamond glyph via CSS) — real PNG/SVG not supplied.
+   Fate icon: public/assets/fate-icon.png (pixel "F") — favicon: public/favicon.ico/.png.
    ========================================================================= */
 
 /* ---------------------------------------------------------------------
@@ -1288,16 +1289,18 @@ function fitAllTitles(){
 }
 window.addEventListener('resize', fitAllTitles);
 
+const FATE_ICON_TOKEN = "\u0001"; /* survives esc(); swapped for the real icon post-escape */
+const FATE_ICON_HTML = '<img class="fate-icon" src="./public/assets/fate-icon.png" alt="F">';
 function statusPanel(){
   const rank = (()=>{
     const idx = LB_CACHE.findIndex(e=>e.playerId===PLAYER_ID);
     return idx>=0 ? "#"+(idx+1)+" of "+LB_CACHE.length : "unranked";
   })();
   return boxHtml("STATUS", [
-    "FATE ◆ "+(STATE?STATE.fate:0),
+    "FATE "+FATE_ICON_TOKEN+" "+(STATE?STATE.fate:0),
     "LEADERBOARD  "+rank,
     "TURN  "+(STATE?STATE.turn:1)+"   ROSTER  "+(STATE?STATE.roster.filter(f=>f.status==="active").length:0)+" active"
-  ], 40);
+  ], 40).replace(/\u0001/g, FATE_ICON_HTML);
 }
 
 function navBar(active){
@@ -1999,7 +2002,7 @@ function renderStore(){
   });
   out += '</div>';
   out += '<div class="panel" data-label="CASH OUT" style="margin-top:10px">';
-  out += '<div class="story-text">Current balance: '+STATE.fate+' Fate</div>';
+  out += '<div class="story-text">Current balance: '+FATE_ICON_HTML+' '+STATE.fate+' Fate</div>';
   out += '<input type="number" id="cashout-amt" min="1" max="'+(Fate.live?Fate.cashable:STATE.fate)+'" placeholder="Amount to cash out'+(Fate.live?" (max "+Fate.cashable+" bought)":"")+'" style="margin:8px 0; width:100%;">';
   out += '<div class="navrow"><button class="navbtn primary" data-action="cashout">Cash Out</button></div>';
   out += '</div>';
