@@ -88,13 +88,18 @@ function esc(s){
    with two kinds of scaffolding that are NOT meant to be shown:
      1. A leading node number ("9.", "10.") on every node.
      2. A leading transition bridge ("Whatever was said,", "Whichever path got
-        you here,") at the start of some nodes. ONLY that bridge clause goes —
-        the emotional/character detail that follows it is player-facing, since
-        this text-only game has no character visuals. */
+        you here,", "Either way, you end up here:") at the start of some nodes.
+        ONLY that bridge clause goes — the emotional/character detail that
+        follows it is player-facing, since this text-only game has no character
+        visuals. */
 function cleanSceneText(s){
   if(s==null) return "";
   let out = String(s).replace(/^\d+\.\s+/, "");
-  out = out.replace(/^(?:Whatever|Whichever)\b[^,]*,/, "");
+  // Precise: only the known writer bridge openers. Keep the rest verbatim so
+  // genuine dialogue that merely starts with "Whatever" (e.g. "Whatever it
+  // takes,") is never truncated.
+  out = out.replace(/^(?:Whatever was said|Whatever led here|Whatever you said|Whatever the path here|Whatever the answer|Whatever you decide|Whichever path got you here|Whichever path got here),\s*/, "");
+  out = out.replace(/^(?:Either way, you end up here:\s*)/, "");
   return out;
 }
 function rand(n){return Math.floor(Math.random()*n);}
