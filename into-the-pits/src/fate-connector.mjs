@@ -109,10 +109,10 @@ async function ensureChain() {
 // ------------------------------------------------------------------ connect
 async function connect() {
   requireWallet();
-  report("Requesting your wallet account…");
+  report("Connecting to your wallet…");
   const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
   address = accounts[0];
-  report("Switching to Somnia Testnet (chain 50312)…");
+  report("Switching to Somnia Testnet…");
   await ensureChain();
   walletClient = createWalletClient({ account: address, chain: CHAIN, transport: custom(window.ethereum) });
   publicClient = createPublicClient({ chain: CHAIN, transport: http(RPC_HTTP) });
@@ -124,9 +124,9 @@ async function connect() {
     addresses: SOMNIA_TESTNET_ADDRESSES,
     walletClient,
   });
-  report("Loading DreamDEX markets…");
+  report("Loading markets…");
   await exchange.loadMarkets();
-  report("Connected. Signing wallet bind…");
+  report("Connected. Verifying wallet…");
   return { address };
 }
 
@@ -137,13 +137,13 @@ async function connect() {
 //     otherwise the recovered signer won't match the address.
 async function bind() {
   await requireConnected();
-  report("Requesting bind nonce…");
+  report("Preparing verification…");
   const { nonce } = await teller("nonce");
   if (!nonce) throw new Error("Teller did not issue a nonce.");
-  const message = `Sign to verify your wallet for FATE\nnonce:${nonce}`;
-  report("Awaiting your signature in your wallet…");
+  const message = "Sign to verify your wallet for FATE";
+  report("Waiting for your signature…");
   const signature = await walletClient.signMessage({ account: address, message });
-  report("Confirming wallet link with the Teller…");
+  report("Verifying your wallet…");
   return teller("link", { address, signature, nonce: String(nonce ?? ""), signedMessage: message });
 }
 
