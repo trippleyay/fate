@@ -137,7 +137,7 @@ async function credit(wallet: string, kind: string, amountFate: bigint, txHash?:
   });
 }
 
-const SIGNING_MESSAGE = (nonce: string) => `FATE: bind wallet to your account\nnonce:${nonce}`;
+const SIGNING_MESSAGE = (nonce: string) => `FATE: bind wallet to your wallet\nnonce:${nonce}`;
 
 // ---------------------------------------------------------------------------
 // DreamDEX indexer (market resolution — the source of truth for outcomes)
