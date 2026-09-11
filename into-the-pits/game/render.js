@@ -620,10 +620,10 @@ function renderSideConfirm(){
   out += statusPanel();
   out += '<div class="panel" data-label="CONFIRM SIDE BET">';
   out += '<div class="banner-holder banner-side"><pre>'+esc(BANNER_SIDE_BETS)+'</pre></div>';
-  out += '<div class="story-text">You\'re putting <b>'+amount+' Fate</b> on <b>'+esc(picked.name)+'</b> over '+esc(other.name)+'.\\n\\nThe call comes when the DreamDEX market closes — back '+esc(picked.name)+', and if the market resolves your way the Fate (multiplied by the odds) is yours.</div>';
+  out += '<div class="story-text">You\'re putting <b>'+amount+' Fate</b> on <b>'+esc(picked.name)+'</b> over '+esc(other.name)+'!</div>';
   out += '<div class="options">'
-       + optRow(1,"Lock it in — "+amount+" Fate on "+picked.name+" ("+oddsSide+")","sidebet-"+pendingChoice)
-       + optRow(2,"Back out — change fighter","sidebet-skip")
+       + optRow(1,"Lock it in","sidebet-"+pendingChoice)
+       + optRow(2,"Back out","sidebet-skip")
        + '</div>';
   out += '</div>';
   out += navBar("side");
