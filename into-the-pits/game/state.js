@@ -84,6 +84,13 @@ const SPEAKER_NAMES = {wren:"WREN", calloway:"CALLOWAY", sable:"SABLE", marsh:"D
 function esc(s){
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
+/* Strip the writer's outline artifacts from scene text. The scripts were kept
+   with a leading node number ("9.", "10.") that is NOT meant to be shown.
+   Remove a leading "N." (and the whitespace after it) on any text node. */
+function cleanSceneText(s){
+  if(s==null) return "";
+  return String(s).replace(/^\d+\.\s+/, "");
+}
 function rand(n){return Math.floor(Math.random()*n);}
 function pick(arr){return arr[rand(arr.length)];}
 function uid(){return Math.random().toString(36).slice(2,9);}

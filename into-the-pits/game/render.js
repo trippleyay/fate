@@ -255,10 +255,10 @@ function renderScene(){
   out += statusPanel();
   out += '<div class="panel" data-label="FINDING A FIGHTER — '+esc(scene.label)+'">';
   if(!STATE.sceneNode.showedIntro){
-    out += '<div class="story-text">'+esc(scene.intro)+'</div>';
+    out += '<div class="story-text">'+esc(cleanSceneText(scene.intro))+'</div>';
   }
   if(node.text){
-    out += '<div class="with-head"><pre>'+esc(HEADS.fighter)+'</pre><div style="flex:1"><div class="speaker-name">'+esc(scene.label)+'</div><div class="story-text">'+esc(node.text)+'</div></div></div>';
+    out += '<div class="with-head"><pre>'+esc(HEADS.fighter)+'</pre><div style="flex:1"><div class="speaker-name">'+esc(scene.label)+'</div><div class="story-text">'+esc(cleanSceneText(node.text))+'</div></div></div>';
   }
   out += '<div class="options">';
   node.options.forEach((o,i)=>{
