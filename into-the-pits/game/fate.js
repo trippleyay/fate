@@ -670,7 +670,7 @@ try{ Persist.getMatchLog().then(log => { if(Array.isArray(log)) MATCH_LOG = log;
 
 function freshState(){
   return {
-    fate: 250,
+    fate: 0,
     roster: [],
     rel: {calloway:0, kestrel:0, marsh:0, juno:0},
     flags: new Set(),

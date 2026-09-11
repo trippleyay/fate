@@ -140,7 +140,7 @@ async function bind() {
   report("Requesting bind nonce…");
   const { nonce } = await teller("nonce");
   if (!nonce) throw new Error("Teller did not issue a nonce.");
-  const message = `FATE: bind wallet to your account\nnonce:${nonce}`; // Teller's SIGNING_MESSAGE, verbatim
+  const message = `Sign to verify your wallet for FATE\nnonce:${nonce}`;
   report("Awaiting your signature in your wallet…");
   const signature = await walletClient.signMessage({ account: address, message });
   report("Confirming wallet link with the Teller…");
