@@ -872,7 +872,7 @@ function renderStore(){
   let out = '<div class="screen">';
   out += statusPanel();
   out += '<div class="panel" data-label="STORE">';
-  out += '<div class="story-text">Buy Fate with tUSDC straight from your connected wallet — 100 FATE = 1 tUSDC, sent to the Teller escrow and credited after on-chain verification. Cash out converts Fate back to tUSDC, paid from the Teller reserve to your wallet. You can only cash out Fate you actually bought (winnings are house money — they play, but they don\'t leave the Pit).</div>';
+  out += '<div class="story-text">Buy FATE with tUSDC or Cash out your FATE for tUSDC. 100 FATE = 1 tUSDC</div>';
   out += '<div class="options">';
   FATE_PACKS.forEach((p,i)=>{
     out += optRow(i+1, p.amount+" FATE — "+p.price, "buy-"+p.id);
