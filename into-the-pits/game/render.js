@@ -339,6 +339,7 @@ async function lockInFight(){
   if(!Fate.live){ alert("A valid wallet connection is required to fight."); goto("splash"); return; }
   if(BET_IN_FLIGHT){ alert("Your call is already being booked — one moment."); return; }
   BET_IN_FLIGHT = true;
+  if(typeof AudioMgr!=="undefined") AudioMgr.playBell();
   try{
     let market;
     try{
@@ -413,6 +414,7 @@ async function rematchPending(escrowId){
   if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
   const entryOdds = (old.side === "YES") ? ((market.odds != null) ? market.odds : 0.5) : 1 - ((market.odds != null) ? market.odds : 0.5);
   const meta = { matchTitle: old.title, fighter: (old.title||"").split(" vs ")[0], opponent: (old.title||"").split(" vs ")[1]||"", entryOdds };
+  if(typeof AudioMgr!=="undefined") AudioMgr.playBell();
   let r;
   try{
     r = await Fate.stake(old.kind, old.side, market.marketId, meta, new Date(market.expiryMs).toISOString());
@@ -652,6 +654,7 @@ async function resolveSideBetChoice(side){
   /* ---- CONFIRM PATH ---- */
   if(BET_IN_FLIGHT){ return; }
   BET_IN_FLIGHT = true;
+  if(typeof AudioMgr!=="undefined") AudioMgr.playBell();
   try{
     let market;
     try{
@@ -890,8 +893,17 @@ function renderStore(){
 function renderSettings(){
   let out = '<div class="screen">';
   out += '<div class="panel" data-label="SETTINGS">';
-  out += '<div class="story-text">Player ID: '+esc(PLAYER_ID)+'\n\nThis stands in for a wallet address in this build.</div>';
-  out += '<div class="options">'+optRow(1,"Reset all saved data on this device","reset-all")+optRow(2,"Back","back-home")+'</div>';
+  out += '<div class="story-text">Player ID: '+esc(PLAYER_ID)+'.</div>';
+  out += '<div class="story-text">Sound '+(SETTINGS.soundOn?'ON':'OFF')+'. Background music: '+esc(String(SETTINGS.bgm).replace(/^./, c=>c.toUpperCase()))+'.</div>';
+  out += '<div class="options">'
+       + optRow(1, (SETTINGS.soundOn?"Mute":"Unmute") + " sound", "toggle-sound")
+       + optRow(2,"War Drums", "bgm-wardrums")
+       + optRow(3,"Synthwave", "bgm-synthwave")
+       + optRow(4,"Lo-Fi",     "bgm-lofi")
+       + optRow(5,"None",      "bgm-none")
+       + optRow(6,"Reset all saved data on this device","reset-all")
+       + optRow(7,"Back","back-home")
+       + '</div>';
   out += '</div></div>';
   return out;
 }
@@ -947,6 +959,7 @@ async function onAction(e){
       if(Fate.wallet){
         PLAYER_ID = "0x"+Fate.wallet.slice(2,6)+"…"+Fate.wallet.slice(-4);
       }
+      if(typeof AudioMgr!=="undefined") AudioMgr.playBGM(SETTINGS.bgm);
       goto("walletConnect", {stage:"connected"});
     }catch(err){
       Fate.live = false; Fate.wallet = null;
@@ -975,6 +988,21 @@ async function onAction(e){
   if(action==="home-store"){ if(!STATE) STATE = freshState(); goto("store"); return; }
   if(action==="home-marketlog"){ goto("marketlog"); return; }
   if(action==="home-settings"){ goto("settings"); return; }
+  if(action==="toggle-sound"){
+    SETTINGS.soundOn = !SETTINGS.soundOn;
+    if(!SETTINGS.soundOn){ if(typeof AudioMgr!=="undefined") AudioMgr.stopBGM(); }
+    else if(typeof AudioMgr!=="undefined"){ AudioMgr.playBGM(SETTINGS.bgm); }
+    Persist.saveSettings(SETTINGS);
+    render(); return;
+  }
+  if(action.startsWith("bgm-")){
+    const next = action.replace("bgm-","");
+    if(next==="none"){ SETTINGS.bgm = "none"; }
+    else{ SETTINGS.bgm = next; }
+    Persist.saveSettings(SETTINGS);
+    if(typeof AudioMgr!=="undefined") AudioMgr.playBGM(SETTINGS.bgm);
+    render(); return;
+  }
   if(action==="home-about"){ goto("about"); return; }
   if(action==="back-home"){ goto("home"); return; }
   if(action==="gameover-home"){ goto("home"); return; }

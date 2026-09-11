@@ -249,6 +249,16 @@ const Persist = {
     if(this.hasArtifactStorage){ try{ await window.storage.set('pits-match-log', json, false); }catch(e){} }
     else { try{ localStorage.setItem('pits-match-log', json); }catch(e){} }
   },
+  /* Audio/sound preferences — persist across sessions so the mix carries. */
+  async getSettings(){
+    try{ const v = localStorage.getItem('pits-settings'); if(v) return JSON.parse(v); }catch(e){}
+    return null;
+  },
+  async saveSettings(settings){
+    const json = JSON.stringify(settings);
+    if(this.hasArtifactStorage){ try{ await window.storage.set('pits-settings', json, false); }catch(e){} }
+    else { try{ localStorage.setItem('pits-settings', json); }catch(e){} }
+  },
   /* One-time anonymous sign-in so RLS recognizes this player. supabase-js
      persists the refresh token, so this is cheap on repeat visits. */
   async ensureAuth(){
@@ -290,6 +300,14 @@ const Persist = {
     }catch(e){ return []; }
   }
 };
+
+/* ---------------------------------------------------------------------
+   SETTINGS — persisted audio preferences. soundOn controls the bell/mixer,
+   bgm is one of: "wardrums" | "synthwave" | "lofi" | "none".
+   --------------------------------------------------------------------- */
+const DEFAULT_SETTINGS = { soundOn: true, bgm: "wardrums", volume: 0.7 };
+let SETTINGS = Object.assign({}, DEFAULT_SETTINGS);
+try{ SETTINGS = Object.assign({}, DEFAULT_SETTINGS, Persist.getSettings() || {}); }catch(e){}
 
 /* ---------------------------------------------------------------------
    GAME DATA
