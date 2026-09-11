@@ -224,6 +224,8 @@ async function findActiveMarket() {
       question
       marketAddress
       expiry
+      lastPrice
+      quoteDecimals
     }
   }`;
   let rows;
@@ -245,12 +247,21 @@ async function findActiveMarket() {
     );
   }
   const m = rows[0];
+  // YES odds (probability 0-1) from the last fill price: raw ≈ probability × 10^decimals.
+  // Null until the first fill — fall back to 0.5 (even odds) for untraded markets.
+  let odds = 0.5;
+  if (m.lastPrice != null) {
+    const raw = Number(m.lastPrice);
+    const dec = Number(m.quoteDecimals) || 6;
+    if (raw > 0) odds = Math.min(0.99, Math.max(0.01, raw / 10 ** dec));
+  }
   return {
     marketId: m.marketId,
     question: m.question,
     asset: (m.asset ?? ""),
     expiry: Number(m.expiry),
     expiryMs: Number(m.expiry) * 1000,
+    odds, // YES-side probability; NO odds = 1 - odds
   };
 }
 

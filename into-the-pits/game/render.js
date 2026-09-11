@@ -72,6 +72,7 @@ function render(){
     else if(SCREEN==="main") html += renderMain();
     else if(SCREEN==="book") html += renderBook();
     else if(SCREEN==="side") html += renderSide();
+    else if(SCREEN==="sideConfirm") html += renderSideConfirm();
     else if(SCREEN==="lb") html += renderLeaderboard();
     else if(SCREEN==="store") html += renderStore();
     else if(SCREEN==="settings") html += renderSettings();
@@ -321,6 +322,7 @@ function recordMatchHistory(m, settleRes){
     winningOutcome: settleRes.market?.winningOutcome || null,
     title: m.title, stake: m.stake, payout: settleRes.payout ?? 0,
     won: !!settleRes.won, settledAt: Date.now(),
+    entryOdds: settleRes.entryOdds ?? m.meta?.entryOdds ?? null,
     resolvedAt: settleRes.market?.resolvedAt || null,
   });
 }
@@ -335,35 +337,42 @@ function addToMatchLog(entry){
 async function lockInFight(){
   const {fighter, opponent} = SCREEN_DATA;
   if(!Fate.live){ alert("A valid wallet connection is required to fight."); goto("splash"); return; }
-  let market;
+  if(BET_IN_FLIGHT){ alert("Your call is already being booked — one moment."); return; }
+  BET_IN_FLIGHT = true;
   try{
-    market = await Fate.findMarket();
-  }catch(err){
-    alert("No available DreamDEX market: "+(err.message||"unknown reason"));
-    render(); return;
+    let market;
+    try{
+      market = await Fate.findMarket();
+    }catch(err){
+      alert("No available DreamDEX market: "+(err.message||"unknown reason"));
+      render(); return;
+    }
+    if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
+    const entryOdds = (market.odds != null) ? market.odds : 0.5; // YES-side odds
+    const meta = { fighter: fighter.name, fighterId: fighter.id, opponent: opponent.name, matchTitle: fighter.name+" vs "+opponent.name, entryOdds };
+    let r;
+    try{
+      r = await Fate.stake("fight_stake","YES",market.marketId,meta,new Date(market.expiryMs).toISOString());
+    }catch(err){
+      alert("Could not stake Fate — "+(err.message||"unknown reason")+". The match was not booked.");
+      render(); return;
+    }
+    if(r && r.escrowId){
+      STATE.pendingMatches.push({
+        escrowId:r.escrowId, marketId:market.marketId, question:market.question,
+        kind:"fight_stake", side:"YES", stake:FATE_STAKE,
+        title:meta.matchTitle, fighterId:fighter.id, opponentName:opponent.name,
+        expiresAt:market.expiryMs, placedAt:Date.now(), _check:null,
+      });
+      saveNow();
+      goto("fightResolve",{fighter,opponent,booked:true,expiresAt:market.expiryMs});
+      return;
+    }
+    alert("Could not stake Fate — the match was not booked for an unknown reason. Try again.");
+    render();
+  } finally {
+    BET_IN_FLIGHT = false;
   }
-  if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
-  const meta = { fighter: fighter.name, fighterId: fighter.id, opponent: opponent.name, matchTitle: fighter.name+" vs "+opponent.name };
-  let r;
-  try{
-    r = await Fate.stake("fight_stake","YES",market.marketId,meta,new Date(market.expiryMs).toISOString());
-  }catch(err){
-    alert("Could not stake Fate — "+(err.message||"unknown reason")+". The match was not booked.");
-    render(); return;
-  }
-  if(r && r.escrowId){
-    STATE.pendingMatches.push({
-      escrowId:r.escrowId, marketId:market.marketId, question:market.question,
-      kind:"fight_stake", side:"YES", stake:FATE_STAKE,
-      title:meta.matchTitle, fighterId:fighter.id, opponentName:opponent.name,
-      expiresAt:market.expiryMs, placedAt:Date.now(), _check:null,
-    });
-    saveNow();
-    goto("fightResolve",{fighter,opponent,booked:true,expiresAt:market.expiryMs});
-    return;
-  }
-  alert("Could not stake Fate — the match was not booked for an unknown reason. Try again.");
-  render();
 }
 
 /* Settle a pending match from the Pending Matches screen. The Teller verifies
@@ -402,7 +411,8 @@ async function rematchPending(escrowId){
     render(); return;
   }
   if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
-  const meta = { matchTitle: old.title, fighter: (old.title||"").split(" vs ")[0], opponent: (old.title||"").split(" vs ")[1]||"" };
+  const entryOdds = (old.side === "YES") ? ((market.odds != null) ? market.odds : 0.5) : 1 - ((market.odds != null) ? market.odds : 0.5);
+  const meta = { matchTitle: old.title, fighter: (old.title||"").split(" vs ")[0], opponent: (old.title||"").split(" vs ")[1]||"", entryOdds };
   let r;
   try{
     r = await Fate.stake(old.kind, old.side, market.marketId, meta, new Date(market.expiryMs).toISOString());
@@ -599,45 +609,82 @@ function renderSide(){
   out += '</div>';
   return out;
 }
+function renderSideConfirm(){
+  const {pair, pendingChoice} = SCREEN_DATA;
+  const [a,b] = pair;
+  const picked = (pendingChoice===a.id) ? a : b;
+  const other = (pendingChoice===a.id) ? b : a;
+  const amount = FATE_STAKE;
+  const oddsSide = (pendingChoice===a.id) ? "YES" : "NO";
+  let out = '<div class="screen">';
+  out += statusPanel();
+  out += '<div class="panel" data-label="CONFIRM SIDE BET">';
+  out += '<div class="banner-holder banner-side"><pre>'+esc(BANNER_SIDE_BETS)+'</pre></div>';
+  out += '<div class="story-text">You\'re putting <b>'+amount+' Fate</b> on <b>'+esc(picked.name)+'</b> over '+esc(other.name)+'.\\n\\nThe call comes when the DreamDEX market closes — back '+esc(picked.name)+', and if the market resolves your way the Fate (multiplied by the odds) is yours.</div>';
+  out += '<div class="options">'
+       + optRow(1,"Lock it in — "+amount+" Fate on "+picked.name+" ("+oddsSide+")","sidebet-"+pendingChoice)
+       + optRow(2,"Back out — change fighter","sidebet-skip")
+       + '</div>';
+  out += '</div>';
+  out += navBar("side");
+  out += '</div>';
+  return out;
+}
 async function resolveSideBetChoice(side){
   if(side==="skip"){ goto("side",{pair:null}); return; }
-  const {pair} = SCREEN_DATA;
-  const [a,b] = pair;
+  const {pair, pendingChoice} = SCREEN_DATA;
+  const target = pendingChoice && pendingChoice!==side ? null : side;
+  if(SCREEN==="sideConfirm"){ /* confirm step already reached */ }
+  const a = pair[0], b = pair[1];
+  const picked = pair.find(p=>p.id===target) || (target===a.id?a:(target===b.id?b:null));
+  if(!picked || !pair){ goto("side",{pair:null}); return; }
   if(!Fate.live){ alert("A valid wallet connection is required to place a side bet."); goto("splash"); return; }
-  /* REAL DreamDEX settlement: the bet is pinned to a live binary market.
-     Backing the first listed opponent maps to YES, the second to NO — an
-     arbitrary mapping the player never sees. The Teller settles against the
-     market's on-chain winningOutcome when it resolves. */
-  let market;
-  try{
-    market = await Fate.findMarket();
-  }catch(err){
-    alert("No available DreamDEX market: "+(err.message||"unknown reason"));
-    render(); return;
-  }
-  if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
-  const marketSide = (side===a.id) ? "YES" : "NO";
+  const marketSide = (target===a.id) ? "YES" : "NO";
   const title = a.name+" vs "+b.name;
-  const meta = { matchTitle:title, fighter:(side===a.id)?a.name:b.name, opponent:(side===a.id)?b.name:a.name };
-  let r;
-  try{
-    r = await Fate.stake("side_bet", marketSide, market.marketId, meta, new Date(market.expiryMs).toISOString());
-  }catch(err){
-    alert("Could not stake Fate — "+(err.message||"unknown reason")+". The bet was not placed.");
-    render(); return;
-  }
-  if(r && r.escrowId){
-    STATE.pendingMatches.push({
-      escrowId:r.escrowId, marketId:market.marketId, question:market.question,
-      kind:"side_bet", side:marketSide, stake:FATE_STAKE,
-      title, pick:side, expiresAt:market.expiryMs, placedAt:Date.now(), _check:null,
-    });
-    saveNow();
-    goto("sideResolve",{side, pair, pending:true, expiresAt:market.expiryMs});
+  /* Two-stage: user must confirm on the SIDE CONFIRM screen before we stake.
+     A `pendingChoice` in SCREEN_DATA means we're at the confirm step and the
+     click that reached here is the explicit confirm. Add an in-flight guard
+     so a double-tap can never place two escrows. */
+  if(!pendingChoice){
+    goto("sideConfirm",{pair, pendingChoice:target});
     return;
   }
-  alert("Could not stake Fate — the bet was not placed for an unknown reason. Try again.");
-  render();
+  /* ---- CONFIRM PATH ---- */
+  if(BET_IN_FLIGHT){ return; }
+  BET_IN_FLIGHT = true;
+  try{
+    let market;
+    try{
+      market = await Fate.findMarket();
+    }catch(err){
+      alert("No available DreamDEX market: "+(err.message||"unknown reason"));
+      render(); return;
+    }
+    if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
+    const entryOdds = (marketSide === "YES") ? ((market.odds != null) ? market.odds : 0.5) : 1 - ((market.odds != null) ? market.odds : 0.5);
+    const meta = { matchTitle:title, fighter:(target===a.id)?a.name:b.name, opponent:(target===a.id)?b.name:a.name, entryOdds };
+    let r;
+    try{
+      r = await Fate.stake("side_bet", marketSide, market.marketId, meta, new Date(market.expiryMs).toISOString());
+    }catch(err){
+      alert("Could not stake Fate — "+(err.message||"unknown reason")+". The bet was not placed.");
+      render(); return;
+    }
+    if(r && r.escrowId){
+      STATE.pendingMatches.push({
+        escrowId:r.escrowId, marketId:market.marketId, question:market.question,
+        kind:"side_bet", side:marketSide, stake:FATE_STAKE,
+        title, pick:target, expiresAt:market.expiryMs, placedAt:Date.now(), _check:null,
+      });
+      saveNow();
+      goto("sideResolve",{side:target, pair, pending:true, expiresAt:market.expiryMs});
+      return;
+    }
+    alert("Could not stake Fate — the bet was not placed for an unknown reason. Try again.");
+    render();
+  } finally {
+    BET_IN_FLIGHT = false;
+  }
 }
 function renderSideResolve(){
   const {side, result, pair, pending, expiresAt} = SCREEN_DATA;
@@ -664,13 +711,24 @@ function renderSideResolve(){
    the market's on-chain resolution (the client trusts nothing).
    --------------------------------------------------------------------- */
 let PENDING_TIMER = null;
+let CD_TIMER = null;
+let BET_IN_FLIGHT = false; /* guards against double-tap double-stake */
+/* Lightweight 1s ticker — updates only the visible countdown digits on the
+   Pending screen. The 20s poll (PENDING_TIMER) still checks server state;
+   this just keeps the countdown from looking frozen between polls. */
+function tickCountdown(){
+  for(const m of STATE.pendingMatches){
+    const el = document.querySelector('span.cd[data-cd="'+m.escrowId+'"]');
+    if(el){ el.textContent = m.expiresAt ? fmtCountdown(m.expiresAt - Date.now()) : "unknown"; }
+  }
+}
 function fmtCountdown(ms){
   if(ms <= 0) return "any moment";
   const m = Math.floor(ms/60000), s = Math.floor((ms%60000)/1000);
   return m > 0 ? m+"m "+s+"s" : s+"s";
 }
 function spanC(id, text){
-  return '%%RAW%%<span class="cd" data-cd="'+id+'">'+text+'</span>';
+  return '%%RAW%%<span class="cd" data-cd="'+id+'">'+text+'</span>%%RAW%%';
 }
 
 function renderPending(){
@@ -697,7 +755,9 @@ function renderPending(){
         const left = m.expiresAt ? fmtCountdown(m.expiresAt - Date.now()) : "unknown";
         status = "Odds open — closes in "+spanC(m.escrowId, left)+".";
       }
-      out += '<div class="story-text"><b>'+esc(m.title)+'</b> ('+(m.kind==="fight_stake"?"Fight Night":"Side Bet")+', '+m.stake+' Fate)\n'+esc(status)+'</div>';
+      // smart-escape: %%RAW%% segments pass through, the rest is escaped
+      const safeStatus = status.split('%%RAW%%').map((seg,i)=> i%2===1 ? seg : esc(seg)).join('');
+      out += '<div class="story-text"><b>'+esc(m.title)+'</b> ('+(m.kind==="fight_stake"?"Fight Night":"Side Bet")+', '+m.stake+' Fate)\n'+safeStatus+'</div>';
       if(actions) out += '<div class="options">'+actions+'</div>';
     });
     out += '<div class="options">'+optRow(1,"Refresh odds","refresh-pending")+optRow(2,"Market Log","marketlog")+'</div>';
@@ -709,11 +769,13 @@ function renderPending(){
 }
 function stopPendingTimer(){
   if(PENDING_TIMER){ clearInterval(PENDING_TIMER); PENDING_TIMER = null; }
+  if(CD_TIMER){ clearInterval(CD_TIMER); CD_TIMER = null; }
 }
 function startPendingTimer(){
   stopPendingTimer();
   if(SCREEN==="pending" && Fate.live && STATE.pendingMatches.length>0){
     PENDING_TIMER = setInterval(refreshPending, 20000);
+    CD_TIMER = setInterval(tickCountdown, 1000);
   }
 }
 
@@ -734,10 +796,21 @@ function renderMarketLog(){
     const rows = MATCH_LOG.slice(0,25).map(h=>{
       const outcome = h.voided ? "VOIDED — stake refunded"
         : (h.won ? "WON (paid "+h.payout+" Fate)" : "LOST");
-      const when = h.resolvedAt ? new Date(h.resolvedAt).toLocaleString() : new Date(h.settledAt).toLocaleString();
+      // resolvedAt may be unix seconds as a number or numeric string — normalize to ms.
+      let resMs = null;
+      const rt = h.resolvedAt;
+      if(rt != null){
+        const n = Number(rt);
+        resMs = isNaN(n) ? new Date(rt).getTime() : (n < 1e12 ? n*1000 : n);
+      }
+      const when = (resMs && !isNaN(resMs)) ? new Date(resMs).toLocaleString() : new Date(h.settledAt).toLocaleString();
       const yourSide = h.side ? String(h.side).toUpperCase() : "—";
-      const wonSide = h.winningOutcome ? String(h.winningOutcome).toUpperCase() : "—";
-      return h.title+"\n  "+(h.kind==="fight_stake"?"Fight Night":"Side Bet")+" · "+h.stake+" Fate on "+yourSide+"\n  market: "+(h.marketId||"—")+(h.asset?" ("+h.asset+")":"")+"\n  question: "+(h.question||"—")+"\n  result: "+outcome+"\n  market resolved: "+wonSide+" at "+when;
+      // winningOutcome is 0 (YES) or 1 (NO) on-chain — render the side name.
+      const wonSide = (h.winningOutcome===0 || h.winningOutcome==="0") ? "YES"
+        : (h.winningOutcome===1 || h.winningOutcome==="1") ? "NO"
+        : String(h.winningOutcome ?? "—").toUpperCase();
+      const odds = h.entryOdds != null ? (Math.round(h.entryOdds*100)/100) : null;
+      return h.title+"\n  "+(h.kind==="fight_stake"?"Fight Night":"Side Bet")+" · "+h.stake+" Fate on "+yourSide+(odds!=null?" @ "+odds:"")+"\n  market: "+(h.marketId||"—")+(h.asset?" ("+h.asset+")":"")+"\n  question: "+(h.question||"—")+"\n  result: "+outcome+"\n  market resolved: "+wonSide+" at "+when;
     });
     out += boxHtml("SETTLED BY THE ODDS", rows, 60);
   }

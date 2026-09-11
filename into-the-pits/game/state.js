@@ -110,7 +110,12 @@ function drawBox(title, lines, minWidth){
   return out.join("\n");
 }
 function boxHtml(title, lines, minWidth){
-  const raw = drawBox(title, lines.map(l => l.startsWith('%%RAW%%') ? l.slice(7) : esc(l)), minWidth);
+  // %%RAW%% segments (pair-wrapped) pass through unescaped, everything between is escaped.
+  const smartEsc = (l) => {
+    if(!l.includes('%%RAW%%')) return esc(l);
+    return l.split('%%RAW%%').map((seg,i)=> i%2===1 ? seg : esc(seg)).join('');
+  };
+  const raw = drawBox(title, lines.map(smartEsc), minWidth);
   // colorize title line + borders lightly
   const rows = raw.split("\n").map((r,i)=>{
     if(i===0 || i===raw.split("\n").length-1 || (title && i===2)) return '<span class="b-line">'+r+'</span>';

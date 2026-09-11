@@ -361,7 +361,20 @@ async function route(req: Request): Promise<Response> {
     }
 
     const stake = BigInt(row.stake_fate);
-    const payout = outcome.won ? stake * 2n : 0n; // stake back + winnings, or nothing
+    // Odds-based payout: capture the market odds at BET time (stored in escrow
+    // meta by the client). Payout = floor(stake / odds) — e.g. 100 FATE at 0.5
+    // odds → 200; at 0.8 → 125; at 0.25 → 400. Bets escrowed before this
+    // change have no entryOdds and fall back to the old flat 2x.
+    let odds = 0.5;
+    const storedOdds = Number(row.meta?.entryOdds);
+    if (storedOdds > 0 && storedOdds < 1) odds = storedOdds;
+    let payout: bigint;
+    if (!outcome.won) {
+      payout = 0n;
+    } else {
+      payout = (stake * 1000n) / BigInt(Math.round(odds * 1000));
+      if (payout <= stake) payout = stake + 1n; // a win must always profit
+    }
     await admin.from("fate_fight_escrow").update({
       status: outcome.won ? "won" : "lost", payout_fate: Number(payout),
       settled_at: new Date().toISOString(),
@@ -369,6 +382,7 @@ async function route(req: Request): Promise<Response> {
     if (payout > 0n) await credit(wallet, "sponsor_reward", payout, null, null, { escrowId, kind: row.kind });
     return json({
       escrowId, won: outcome.won, voided: false, payout: Number(payout),
+      entryOdds: odds,
       fate: Number((await getLedger(wallet)).fate_balance),
       market: {
         marketId: outcome.market.marketId, question: outcome.market.question,
