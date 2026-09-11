@@ -77,9 +77,9 @@ function hexEncode(bytes: Uint8Array): string {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-// Stateless nonce: HMAC(secret, sub|expiry|rand), 10 min TTL
+// Stateless nonce: HMAC(secret, sub|expiry|rand), 30 min TTL
 async function makeNonce(sub: string): Promise<string> {
-  const exp = Date.now() + 10 * 60 * 1000;
+  const exp = Date.now() + 30 * 60 * 1000;
   const rnd = crypto.randomUUID();
   const sig = hexEncode(await hmacSha256(Deno.env.get("TELLER_NONCE_SECRET")!, `${sub}|${exp}|${rnd}`));
   return `${exp}|${rnd}|${sig}`;
