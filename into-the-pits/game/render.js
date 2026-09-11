@@ -135,7 +135,6 @@ function renderWalletConnect(){
   if(stage==="connecting"){
     out += '<div class="story-text">Reaching out to your wallet provider...</div>';
     out += '<div class="connect-status"><span class="spinner"></span><span id="connect-status-text">Requesting your wallet account…</span></div>';
-    out += '<button class="enter-prompt" data-action="wallet-confirm">[ENTER] CONFIRM CONNECTION</button>';
     out += '<div class="wallet-line">A valid wallet connection is required to enter the Pit.</div>';
   } else if(stage==="error"){
     out += '<div class="story-text" style="color:var(--red)">CONNECTION FAILED</div>';
@@ -961,12 +960,8 @@ function bindEvents(){
 
 async function onAction(e){
   const action = e.currentTarget.getAttribute('data-action');
-  if(action==="splash-enter"){ goto("walletConnect", {stage:"connecting"}); return; }
-  if(action==="back-splash"){ goto("splash"); return; }
-  if(action==="wallet-confirm"){
+  if(action==="splash-enter"){
     PLAYER_ID = await Persist.getPlayerId();
-    /* HARD GATE: a valid wallet connection (connect + bind + Teller state) is
-       required. Any failure is shown on screen and the player cannot proceed. */
     goto("walletConnect", {stage:"connecting"});
     const setStatus = (msg) => { const el = document.getElementById("connect-status-text"); if(el) el.textContent = msg; };
     setStatus("Requesting your wallet account…");
@@ -987,6 +982,8 @@ async function onAction(e){
     }
     return;
   }
+  if(action==="back-splash"){ goto("splash"); return; }
+
   if(action==="wallet-continue"){
     /* Defensive: never enter the game without a live wallet session. */
     if(!Fate.live || !Fate.wallet){
