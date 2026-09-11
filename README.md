@@ -1,9 +1,9 @@
 # FATE
 
-**FATE** is a series of games where stories are shaped by real-world markets rather than being entirely predetermined by the developer.
+FATE is a series of games where real-world markets shape parts of the story instead of every outcome being fully predetermined by the developer.
 
-The first game in the series is **FATE: INTO THE PITS**, a text-based cyberpunk game about running an underground fight club in the flooded city of Saltmark.
+The first game in the series is [**FATE: Into the Pits**](./into-the-pits/), a text-based cyberpunk management game about running an underground fight club in the flooded city of Saltmark. Its key fights are determined through real onchain market outcomes, making events outside the game part of the story.
 
-In *Into the Pits*, key events such as Fight Nights are connected to **DreamDEX Event Contracts**. The market determines the outcome, and that outcome becomes part of the player's story and progression.
+## License
 
-FATE explores what games can look like when the world outside the game can influence what happens inside it.
+FATE is released under the MIT License.
