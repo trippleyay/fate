@@ -102,7 +102,7 @@ function renderSplash(){
   out += '<div class="title-wrap title-wrap-splash">'+TITLE_BANNER_HTML+'</div>';
   out += '<div class="splash-tagline">A DEN. A CITY. A CROWD THAT ALWAYS WANTS MORE.</div>';
   out += '<div class="disclaimer-box"><b>FATE HAS REAL FINANCIAL VALUE.</b><br>'
-       + 'Fate is bought and cashed out for real money through connected DreamDEX markets. '
+       + 'FATE is bought and cashed out for real money through connected DreamDEX markets. '
        + 'Outcomes are not guaranteed and you can lose what you wager. Only play with money '
        + 'you can afford to lose. You must meet the legal age and eligibility requirements in '
        + 'your jurisdiction to participate. Play responsibly.</div>';
@@ -345,7 +345,7 @@ async function lockInFight(){
     try{
       market = await Fate.findMarket();
     }catch(err){
-      alert("No available DreamDEX market: "+(err.message||"unknown reason"));
+      alert(friendlyError(err));
       render(); return;
     }
     if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
@@ -355,7 +355,7 @@ async function lockInFight(){
     try{
       r = await Fate.stake("fight_stake","YES",market.marketId,meta,new Date(market.expiryMs).toISOString());
     }catch(err){
-      alert("Could not stake Fate — "+(err.message||"unknown reason")+". The match was not booked.");
+      alert("Could not stake FATE — "+friendlyError(err)+". The match was not booked.");
       render(); return;
     }
     if(r && r.escrowId){
@@ -369,7 +369,7 @@ async function lockInFight(){
       goto("fightResolve",{fighter,opponent,booked:true,expiresAt:market.expiryMs});
       return;
     }
-    alert("Could not stake Fate — the match was not booked for an unknown reason. Try again.");
+    alert("Could not stake FATE — the match was not booked for an unknown reason. Try again.");
     render();
   } finally {
     BET_IN_FLIGHT = false;
@@ -382,8 +382,10 @@ async function settlePending(escrowId){
   const idx = STATE.pendingMatches.findIndex(m=>m.escrowId===escrowId);
   if(idx<0){ render(); return; }
   const m = STATE.pendingMatches[idx];
-  const r = await Fate.settle(escrowId);
-  if(!r){ render(); return; }
+  let r;
+  try{ r = await Fate.settle(escrowId); }
+  catch(err){ alert(friendlyError(err)); render(); return; }
+  if(!r){ alert("Settlement failed — please try again."); render(); return; }
   if(r.voided){ m._check = {voided:true}; saveNow(); render(); return; }
   recordMatchHistory(m, r);
   STATE.pendingMatches.splice(idx,1);
@@ -408,7 +410,7 @@ async function rematchPending(escrowId){
   try{
     market = await Fate.findMarket();
   }catch(err){
-    alert("No available DreamDEX market: "+(err.message||"unknown reason"));
+    alert(friendlyError(err));
     render(); return;
   }
   if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
@@ -419,7 +421,7 @@ async function rematchPending(escrowId){
   try{
     r = await Fate.stake(old.kind, old.side, market.marketId, meta, new Date(market.expiryMs).toISOString());
   }catch(err){
-    alert("Rematch failed: "+(err.message||"unknown reason")+". Original escrow left untouched.");
+    alert("Rematch failed: "+friendlyError(err)+". Original escrow left untouched.");
     render(); return;
   }
   if(r && r.escrowId){
@@ -431,7 +433,7 @@ async function rematchPending(escrowId){
       pick:old.pick, expiresAt:market.expiryMs, placedAt:Date.now(), _check:null,
     });
     saveNow();
-  } else { alert("Rematch failed: could not stake Fate. Original escrow left untouched."); }
+  } else { alert("Rematch failed: could not stake FATE. Original escrow left untouched."); }
   render();
 }
 
@@ -562,7 +564,7 @@ function resolveWinReward(idx){
   if(idx===2) STATE.flags.add("turned_down_sponsor_verbally");
   saveNow();
   const panel = app.querySelector('.panel');
-  panel.innerHTML = '<div class="story-text">Whatever you said, +100 Fate lands in your balance regardless. He\'s already gone.</div><div class="options">'+optRow(1,"Continue","back-to-main")+'</div>';
+  panel.innerHTML = '<div class="story-text">Whatever you said, +100 FATE lands in your balance regardless. He\'s already gone.</div><div class="options">'+optRow(1,"Continue","back-to-main")+'</div>';
   bindEvents();
 }
 
@@ -622,7 +624,7 @@ function renderSideConfirm(){
   out += statusPanel();
   out += '<div class="panel" data-label="CONFIRM SIDE BET">';
   out += '<div class="banner-holder banner-side"><pre>'+esc(BANNER_SIDE_BETS)+'</pre></div>';
-  out += '<div class="story-text">You\'re putting <b>'+amount+' Fate</b> on <b>'+esc(picked.name)+'</b> over '+esc(other.name)+'!</div>';
+  out += '<div class="story-text">You\'re putting <b>'+amount+' FATE</b> on <b>'+esc(picked.name)+'</b> over '+esc(other.name)+'!</div>';
   out += '<div class="options">'
        + optRow(1,"Lock it in","sidebet-"+pendingChoice)
        + optRow(2,"Back out","sidebet-skip")
@@ -660,7 +662,7 @@ async function resolveSideBetChoice(side){
     try{
       market = await Fate.findMarket();
     }catch(err){
-      alert("No available DreamDEX market: "+(err.message||"unknown reason"));
+      alert(friendlyError(err));
       render(); return;
     }
     if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
@@ -670,7 +672,7 @@ async function resolveSideBetChoice(side){
     try{
       r = await Fate.stake("side_bet", marketSide, market.marketId, meta, new Date(market.expiryMs).toISOString());
     }catch(err){
-      alert("Could not stake Fate — "+(err.message||"unknown reason")+". The bet was not placed.");
+      alert("Could not stake FATE — "+friendlyError(err)+". The bet was not placed.");
       render(); return;
     }
     if(r && r.escrowId){
@@ -683,7 +685,7 @@ async function resolveSideBetChoice(side){
       goto("sideResolve",{side:target, pair, pending:true, expiresAt:market.expiryMs});
       return;
     }
-    alert("Could not stake Fate — the bet was not placed for an unknown reason. Try again.");
+    alert("Could not stake FATE — the bet was not placed for an unknown reason. Try again.");
     render();
   } finally {
     BET_IN_FLIGHT = false;
@@ -701,7 +703,7 @@ function renderSideResolve(){
     out += '<div class="options">'+optRow(1,"Pending Matches","pending")+optRow(2,"Back to the Pit","back-to-main")+'</div>';
   } else {
     out += '<div class="banner-holder '+(result==="WIN"?"banner-win":"banner-lose")+'"><pre>'+esc(result==="WIN"?BANNER_WIN:BANNER_LOSE)+'</pre></div>';
-    out += '<div class="story-text">'+(result==="WIN"?"Your side came through.":"Didn't go your way this time.")+' No roster impact, no relationships touched — just Fate on the line.</div>';
+    out += '<div class="story-text">'+(result==="WIN"?"Your side came through.":"Didn't go your way this time.")+' No roster impact, no relationships touched — just FATE on the line.</div>';
     out += '<div class="options">'+optRow(1,"Back to the Pit","back-to-main")+'</div>';
   }
   out += '</div></div>';
@@ -739,7 +741,7 @@ function renderPending(){
   out += statusPanel();
   out += '<div class="panel" data-label="PENDING MATCHES">';
   if(!Fate.live){
-    out += '<div class="story-text">No wallet connected. Live matches — where Fate is on the line and the odds decide — need a connected wallet (Home → Enter the Pit).</div>';
+    out += '<div class="story-text">No wallet connected. Live matches — where FATE is on the line and the odds decide — need a connected wallet (Home → Enter the Pit).</div>';
   } else if(STATE.pendingMatches.length===0){
     out += '<div class="story-text">No matches on the card. Book a fight or drop a side bet — the result lands here when the odds close.</div>';
   } else {
@@ -748,7 +750,7 @@ function renderPending(){
       const chk = m._check;
       let status, actions = "";
       if(chk && chk.voided){
-        status = "MATCH VOIDED — the market settled with no result. Your "+m.stake+" Fate is still locked.";
+        status = "MATCH VOIDED — the market settled with no result. Your "+m.stake+" FATE is still locked.";
         actions = optRow(1,"Rematch — pin a new market","rematch-pending-"+m.escrowId)
                 + optRow(2,"Cancel — refund the stake","cancel-pending-"+m.escrowId);
       } else if(chk && chk.resolved){
@@ -792,13 +794,13 @@ function renderMarketLog(){
   let out = '<div class="screen">';
   out += statusPanel();
   out += '<div class="panel" data-label="MARKET LOG — VERIFY THE ODDS">';
-  out += '<div class="story-text">Every Fate match is settled by a real DreamDEX prediction market — the result shown is the market\'s on-chain winningOutcome.</div>';
+  out += '<div class="story-text">Every FATE match is settled by a real DreamDEX prediction market — the result shown is the market\'s on-chain winningOutcome.</div>';
   if(MATCH_LOG.length===0){
     out += '<div class="story-text">No settled matches yet. Book a fight or drop a side bet — results land here once their DreamDEX market closes.</div>';
   } else {
     const rows = MATCH_LOG.slice(0,25).map(h=>{
       const outcome = h.voided ? "VOIDED — stake refunded"
-        : (h.won ? "WON (paid "+h.payout+" Fate)" : "LOST");
+        : (h.won ? "WON (paid "+h.payout+" FATE)" : "LOST");
       // resolvedAt may be unix seconds as a number or numeric string — normalize to ms.
       let resMs = null;
       const rt = h.resolvedAt;
@@ -813,7 +815,7 @@ function renderMarketLog(){
         : (h.winningOutcome===1 || h.winningOutcome==="1") ? "NO"
         : String(h.winningOutcome ?? "—").toUpperCase();
       const odds = h.entryOdds != null ? (Math.round(h.entryOdds*100)/100) : null;
-      return h.title+"\n  "+(h.kind==="fight_stake"?"Fight Night":"Side Bet")+" · "+h.stake+" Fate on "+yourSide+(odds!=null?" @ "+odds:"")+"\n  market: "+(h.marketId||"—")+(h.asset?" ("+h.asset+")":"")+"\n  question: "+(h.question||"—")+"\n  result: "+outcome+"\n  market resolved: "+wonSide+" at "+when;
+      return h.title+"\n  "+(h.kind==="fight_stake"?"Fight Night":"Side Bet")+" · "+h.stake+" FATE on "+yourSide+(odds!=null?" @ "+odds:"")+"\n  market: "+(h.marketId||"—")+(h.asset?" ("+h.asset+")":"")+"\n  question: "+(h.question||"—")+"\n  result: "+outcome+"\n  market resolved: "+wonSide+" at "+when;
     });
     out += boxHtml("SETTLED BY THE ODDS", rows, 60);
   }
@@ -870,10 +872,10 @@ function renderStore(){
   let out = '<div class="screen">';
   out += statusPanel();
   out += '<div class="panel" data-label="STORE">';
-  out += '<div class="story-text">Buy Fate with tUSDC straight from your connected wallet — 100 Fate = 1 tUSDC, sent to the Teller escrow and credited after on-chain verification. Cash out converts Fate back to tUSDC, paid from the Teller reserve to your wallet. You can only cash out Fate you actually bought (winnings are house money — they play, but they don\'t leave the Pit).</div>';
+  out += '<div class="story-text">Buy Fate with tUSDC straight from your connected wallet — 100 FATE = 1 tUSDC, sent to the Teller escrow and credited after on-chain verification. Cash out converts Fate back to tUSDC, paid from the Teller reserve to your wallet. You can only cash out Fate you actually bought (winnings are house money — they play, but they don\'t leave the Pit).</div>';
   out += '<div class="options">';
   FATE_PACKS.forEach((p,i)=>{
-    out += optRow(i+1, p.amount+" Fate — "+p.price, "buy-"+p.id);
+    out += optRow(i+1, p.amount+" FATE — "+p.price, "buy-"+p.id);
   });
   out += '</div>';
   out += '<div class="panel" data-label="CASH OUT" style="margin-top:10px">';
@@ -910,7 +912,7 @@ function renderSettings(){
 function renderAbout(){
   let out = '<div class="screen">';
   out += '<div class="panel" data-label="ABOUT">';
-  out += '<div class="story-text">FATE: INTO THE PITS\n\nSaltmark is drowning. You run an unlicensed fight den called THE PIT. Recruit fighters, manage rivals and cops and corps, and stage Fight Nights where real stakes ride on real outcomes.\n\nFate is the only currency, spent and won only at Fight Night and Side Bets. Everything else is pure story — no Rep, no Heat, no hidden meters.</div>';
+  out += '<div class="story-text">FATE: INTO THE PITS\n\nSaltmark is drowning. You run an unlicensed fight den called THE PIT. Recruit fighters, manage rivals and cops and corps, and stage Fight Nights where real stakes ride on real outcomes.\n\nFATE is the only currency, spent and won only at Fight Night and Side Bets. Everything else is pure story — no Rep, no Heat, no hidden meters.</div>';
   out += '<div class="options">'+optRow(1,"Back","back-home")+'</div>';
   out += '</div></div>';
   return out;
@@ -963,7 +965,7 @@ async function onAction(e){
       goto("walletConnect", {stage:"connected"});
     }catch(err){
       Fate.live = false; Fate.wallet = null;
-      goto("walletConnect", {stage:"error", error: err && err.message ? err.message : "Wallet connection failed."});
+      goto("walletConnect", {stage:"error", error: friendlyError(err)});
     }
     return;
   }
@@ -1051,7 +1053,7 @@ async function onAction(e){
       const btn = e.currentTarget; btn.disabled = true; btn.textContent = "Waiting for wallet…";
       Fate.buy(tusdc)
         .then(() => { saveNow(); render(); })
-        .catch(err => { alert("Buy failed: "+err.message); btn.disabled = false; btn.textContent = pack.amount+" Fate — "+pack.price; });
+        .catch(err => { alert(friendlyError(err)); btn.disabled = false; btn.textContent = pack.amount+" FATE — "+pack.price; });
     }
     return;
   }
@@ -1059,11 +1061,11 @@ async function onAction(e){
     const input = document.getElementById('cashout-amt');
     const amt = parseInt(input.value,10);
     if(!amt || amt<=0){ return; }
-    if(amt>STATE.fate){ alert("Insufficient Fate balance — you have "+STATE.fate+" Fate."); return; }
+    if(amt>STATE.fate){ alert("Insufficient FATE balance — you have "+STATE.fate+" FATE."); return; }
     if(!Fate.live){ goto("store", {msg:"Connect a wallet first."}); return; }
     Fate.cashout(amt)
       .then(() => { alert("Cash out successful! tUSDC has been sent to your wallet."); render(); })
-      .catch(err => alert("Cash out failed: "+err.message));
+      .catch(err => alert(friendlyError(err)));
     return;
   }
 }

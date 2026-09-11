@@ -7,7 +7,7 @@ const Fate = {
     const fc = window.FateConnector;
     if(!fc){
       throw new Error(!window.ethereum
-        ? "No wallet found in this browser. Install/enable MetaMask and reload."
+        ? "No wallet found in this browser. Install/enable a wallet and reload."
         : "Connector module did not finish loading. Hard-refresh the page (Ctrl+Shift+R) and try again.");
     }
     fc.configure({ tellerUrl: TELLER_URL, supabaseAnonKey: window.FATE_CONFIG.supabaseAnonKey });

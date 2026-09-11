@@ -102,6 +102,45 @@ function cleanSceneText(s){
   out = out.replace(/^(?:Either way, you end up here:\s*)/, "");
   return out;
 }
+/* Turn raw SDK/wallet/Teller errors into short, player-friendly lines.
+   Technical jargon and viem's multi-paragraph stack-text are replaced by one
+   clear sentence. Falls back to a trimmed version of the original message. */
+function friendlyError(e){
+  const msg = (e && e.message) ? String(e.message) : (e ? String(e) : "");
+  const L = msg.toLowerCase();
+  if(/user rejected|user denied|denied transaction signature|rejected the request|user rejected the request/.test(L))
+    return "You cancelled the request in your wallet. Nothing was spent.";
+  if(/networkerror when attempting to fetch|failed to fetch|networkerror|indexer unreachable|temporarily unavailable|unreachable/.test(L))
+    return "Network hiccup reaching the market. Try again in a moment.";
+  if(/nonce too low|nonce has max value|transaction already imported|already known|nonce too high/.test(L))
+    return "Your last transaction is still clearing. Try again in a few seconds.";
+  if(/insufficient funds|exceeds the (transaction )?sender account balance|not enough.*(stt|tusdc)/.test(L))
+    return "Your wallet doesn't have enough tUSDC or STT for this.";
+  if(/insufficient fate|not enough fate/.test(L))
+    return "Not enough FATE for that.";
+  if(/cashable is .*, cannot cash out/.test(L))
+    return "You can only cash out FATE you bought — winnings are house money and stay in the Pit.";
+  if(/daily cashout limit|cash.out limit/.test(L))
+    return "Daily cash-out limit reached — try again tomorrow.";
+  if(/no matching tUSDC transfer|tx failed on-chain|transfer reverted/.test(L))
+    return "We couldn't verify that deposit. Make sure the transfer went through, then try again.";
+  if(/tx already claimed|already claimed/.test(L))
+    return "That deposit was already credited.";
+  if(/no ethereum wallet|no wallet found|install\/enable/.test(L))
+    return "No wallet found — install a somnia wallet to play.";
+  if(/unrecognized chain|unsupported chain|wrong chain|does not match the target chain|switch.*testnet/.test(L))
+    return "Your wallet is on the wrong network. Switch to the Somnia Testnet.";
+  if(/market not resolved yet|not resolved yet/.test(L))
+    return "The market hasn't called it yet. Check back when the countdown ends.";
+  if(/escrow already settled|already settled/.test(L))
+    return "This match was already settled.";
+  if(/signature does not match|nonce expired|nonce invalid/.test(L))
+    return "That sign-in request expired. Try connecting again.";
+  /* Fallback: strip viem's stack-text and keep one concise line. */
+  const cut = msg.split(/Request Arguments:|Contract Call:|Docs:|Details:|Version:/i)[0]
+    .replace(/\s+/g," ").trim();
+  return cut.length > 140 ? cut.slice(0,140)+"…" : cut;
+}
 function rand(n){return Math.floor(Math.random()*n);}
 function pick(arr){return arr[rand(arr.length)];}
 function uid(){return Math.random().toString(36).slice(2,9);}

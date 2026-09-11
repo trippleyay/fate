@@ -41,7 +41,7 @@ function report(msg) {
 
 // ------------------------------------------------------------------ helpers
 function requireWallet() {
-  if (!window.ethereum) throw new Error("No Ethereum wallet found. Install MetaMask (or any EIP-1193 wallet).");
+  if (!window.ethereum) throw new Error("No wallet found in this browser. Install a wallet and reload.");
 }
 async function requireConnected() {
   if (!walletClient) await connect();
@@ -99,7 +99,7 @@ async function ensureChain() {
       await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_ID_HEX }] });
     } else {
       throw new Error(
-        `Please switch MetaMask to the Somnia Testnet (chain ${CHAIN.id}) and retry. ` +
+        `Please switch your wallet to the Somnia Testnet (chain ${CHAIN.id}) and retry. ` +
         `Your wallet is on chain ${Number(current) || current}. (${e?.message ?? e})`,
       );
     }
@@ -141,7 +141,7 @@ async function bind() {
   const { nonce } = await teller("nonce");
   if (!nonce) throw new Error("Teller did not issue a nonce.");
   const message = `FATE: bind wallet to your account\nnonce:${nonce}`; // Teller's SIGNING_MESSAGE, verbatim
-  report("Awaiting your signature in MetaMask…");
+  report("Awaiting your signature in your wallet…");
   const signature = await walletClient.signMessage({ account: address, message });
   report("Confirming wallet link with the Teller…");
   return teller("link", { address, signature, nonce: String(nonce ?? ""), signedMessage: message });
