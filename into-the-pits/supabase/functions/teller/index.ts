@@ -284,8 +284,6 @@ async function route(req: Request): Promise<Response> {
     const wallet = await boundWallet(sub);
     const ledger = await getLedger(wallet);
     const amount = BigInt(fateAmount);
-    const cashable = BigInt(ledger.total_bought) - BigInt(ledger.total_cashout);
-    if (amount > cashable) return fail(`cashable is ${cashable}, cannot cash out ${amount}`);
     if (amount > BigInt(ledger.fate_balance)) return fail("insufficient fate");
 
     const today = new Date().toISOString().slice(0, 10);

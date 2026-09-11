@@ -1,8 +1,7 @@
 # FATE: INTO THE PITS
 
-**FATE: Into the Pits** is a text-based cyberpunk management game set in the flooded city of Saltmark.
-
-You run an underground fight club in the Trench. You recruit fighters, manage your roster, build relationships with the people around the club, and make decisions that shape what happens next.
+**FATE: Into the Pits** is a text-based cyberpunk management game where fight outcomes are determined by DreamDEX Event Contracts.
+In Into the Pits, you run an underground fight club in the Trench. You recruit fighters, manage your roster, build relationships with the people around the club, and make decisions that shape what happens next.
 
 ## The Game
 
@@ -10,35 +9,56 @@ The story unfolds through repeated turns made up of short events and decisions. 
 
 Because the game is event-driven rather than based on a fixed linear plot, different runs can develop in different ways. The roster, relationships, and sequence of events can change from one playthrough to another.
 
-## Market-Driven Outcomes
+## Architecture
 
-The defining mechanic of Into the Pits is **Fight Night**.
+### How the market integration works
 
-Fight Night is where the outcome of a fight is determined outside the game's own internal logic. The player uses **FATE**, the game's in-game currency, to take part in a Fight Night, and the fight is resolved through a real **DreamDEX Event Contract**.
+Fight Night and Side Bet do not generate results on their own. They pin a stake to a real prediction market on Somnia and wait for that market to settle. The game reads the settled result and turns it into the fight outcome.
 
-DreamDEX is an onchain prediction market on the Somnia network. An Event Contract represents a real-world event with a defined outcome. Instead of Into the Pits generating a result itself, the game uses the resolved outcome of the relevant Event Contract.
+### DreamDEX markets
 
-The process is deliberately simple:
+DreamDEX is an onchain prediction market on the Somnia network. The markets used here are **Event Contracts** that ask a binary yes or no question. An example would be a market that asks whether the price of ETH will be at or above a set value at a set time.
 
-1. A Fight Night is connected to a DreamDEX Event Contract.
-2. The player risks FATE through the Fight Night.
-3. The Event Contract resolves according to the real market outcome.
-4. That outcome becomes the result of the fight in the game.
-5. The result changes the player's run and the fighter's record.
+Each market has two outcomes:
 
-This means a fight can be decided by something that happens outside the game rather than by a predetermined result written by the developer.
+- **YES** — the stated condition happens.
+- **NO** — the stated condition does not happen.
 
-**Side Bet** uses the same market-driven principle. It is another point where the player can risk or win FATE based on the outcome of a DreamDEX Event Contract.
+When a Fight Night or Side Bet starts, the connector queries the Somnia indexer for open Event Contracts, finds one that has not resolved yet, and ties the stake to that market. The outcome is set automatically. On Fight Nights the stake is locked to YES. On Side Bets one fighter is set to YES and the other to NO. The player risks FATE on the chosen fighter without making a manual yes or no decision.
 
-The rest of the game does not depend on real-world markets. Recruitment, relationships, story events, and other game systems are handled by the game's own logic. DreamDEX is used specifically to determine the outcomes of the market-linked Fight Night and Side Bet mechanics.
+### Odds and payouts
 
-## FATE and Progression
+These are real markets, so the payout is not a fixed amount. The odds come from the market's live price at the moment the stake is placed. The price reflects the market's current probability for that outcome.
 
-**FATE** is the game's in-game currency and is specifically used where the player takes a risk through Fight Night or Side Bet.
+If a player stakes on YES at a price of 0.5, the market is pricing that outcome at 50 percent. The payout is the stake divided by that price. A stake of 100 FATE at 0.5 odds returns 200 FATE. A stake of 100 FATE at 0.8 odds returns 125 FATE. A stake of 100 FATE at 0.25 odds returns 400 FATE.
 
-Fight results contribute to the player's overall run. Winning streaks can earn FATE rewards, while defined losing streaks can bring the run to an end.
+If the market settles against the player, the stake is lost. Winnings are added to the player's FATE balance just like any other FATE and can be used for more bets or cashed out.
 
-This creates a simple risk and progression loop. Players build a roster, make decisions through the story, and eventually have to put their progress at risk when entering market-driven events.
+### Somnia and tUSDC
+
+Somnia is the chain the markets and the Teller run on. The game's currency tUSDC is the onchain token used for buy and cashout. 
+
+### The Teller
+
+The Teller is the only part of the system that writes the Fate balance. It manages four data stores:
+
+- **fate_ledger** — the authoritative Fate balance for each wallet.
+- **fate_events** — an append-only log of every buy, cashout, stake, and reward.
+- **fate_wallet_links** — the binding between a signed-in user session and a wallet address.
+- **fate_quotas** — a daily rate limit so one wallet cannot drain the Teller reserve.
+
+The client talks to the Teller through HTTP requests carrying the user session token from anonymous auth. The Teller runs with elevated privileges so it can write whatever the rules allow.
+
+
+### Buying and cashing out
+
+To buy FATE, the player transfers tUSDC from their wallet to the Teller wallet and submits the transaction hash. The Teller checks the transaction onchain and credits FATE to the ledger. The rate is 100 FATE per 1 tUSDC.
+
+To cash out, the player asks to convert FATE back to tUSDC. The Teller debits the ledger and sends tUSDC from its own wallet to the player. All FATE can be cashed out.
+
+### Stakes and settlement
+
+A stake is tied to a specific market id and a specific side, YES or NO. The connector sends the stake to the Teller, which locks the FATE in an escrow record. When the market resolves, the game calls settle with the wallet outcome. The Teller reads the odds saved at stake time, calculates the payout from those odds, and either credits the payout or keeps the stake lost.
 
 ## Leaderboard
 
