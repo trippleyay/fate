@@ -85,11 +85,17 @@ function esc(s){
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 /* Strip the writer's outline artifacts from scene text. The scripts were kept
-   with a leading node number ("9.", "10.") that is NOT meant to be shown.
-   Remove a leading "N." (and the whitespace after it) on any text node. */
+   with two kinds of scaffolding that are NOT meant to be shown:
+     1. A leading node number ("9.", "10.") on every node.
+     2. A leading transition bridge ("Whatever was said,", "Whichever path got
+        you here,") at the start of some nodes. ONLY that bridge clause goes —
+        the emotional/character detail that follows it is player-facing, since
+        this text-only game has no character visuals. */
 function cleanSceneText(s){
   if(s==null) return "";
-  return String(s).replace(/^\d+\.\s+/, "");
+  let out = String(s).replace(/^\d+\.\s+/, "");
+  out = out.replace(/^(?:Whatever|Whichever)\b[^,]*,/, "");
+  return out;
 }
 function rand(n){return Math.floor(Math.random()*n);}
 function pick(arr){return arr[rand(arr.length)];}
