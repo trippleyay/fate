@@ -10,6 +10,24 @@ function goto(screen, data){
   window.scrollTo({top:0});
 }
 
+/* Custom themed modal — replaces browser showModal() */
+function showModal(message, onOk){
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = '<div class="modal-box"><div class="modal-msg"></div><button class="modal-btn">[ENTER] OK</button></div>';
+  overlay.querySelector('.modal-msg').textContent = message;
+  const btn = overlay.querySelector('.modal-btn');
+  const close = () => { overlay.remove(); if(typeof onOk === 'function') onOk(); };
+  btn.addEventListener('click', close);
+  overlay.addEventListener('click', (e) => { if(e.target === overlay) close(); });
+  document.addEventListener('keydown', function handler(e){
+    if(e.key === 'Enter' || e.key === 'Escape'){ close(); document.removeEventListener('keydown', handler); }
+  });
+  document.body.appendChild(overlay);
+  btn.focus();
+}
+function hideModal(){ const o = document.querySelector('.modal-overlay'); if(o) o.remove(); }
+
 render();
 
 /* Scales the title banner (and any .title-wrap) to fit its container with
@@ -336,8 +354,8 @@ function addToMatchLog(entry){
 
 async function lockInFight(){
   const {fighter, opponent} = SCREEN_DATA;
-  if(!Fate.live){ alert("A valid wallet connection is required to fight."); goto("splash"); return; }
-  if(BET_IN_FLIGHT){ alert("Your call is already being booked — one moment."); return; }
+  if(!Fate.live){ showModal("A valid wallet connection is required to fight.", () => goto("splash")); return; }
+  if(BET_IN_FLIGHT){ showModal("Your call is already being booked — one moment."); return; }
   BET_IN_FLIGHT = true;
   if(typeof AudioMgr!=="undefined") AudioMgr.playBell();
   try{
@@ -345,18 +363,18 @@ async function lockInFight(){
     try{
       market = await Fate.findMarket();
     }catch(err){
-      alert(friendlyError(err));
+      showModal(friendlyError(err));
       render(); return;
     }
-    if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
+    if(!market){ showModal("No active DreamDEX market right now. Try again shortly.", () => render()); return; }
     const entryOdds = (market.odds != null) ? market.odds : 0.5; // YES-side odds
     const meta = { fighter: fighter.name, fighterId: fighter.id, opponent: opponent.name, matchTitle: fighter.name+" vs "+opponent.name, entryOdds };
     let r;
     try{
       r = await Fate.stake("fight_stake","YES",market.marketId,meta,new Date(market.expiryMs).toISOString());
     }catch(err){
-      alert("Could not stake FATE — "+friendlyError(err)+". The match was not booked.");
-      render(); return;
+      showModal("Could not stake FATE — "+friendlyError(err)+". The match was not booked.", () => render());
+      return;
     }
     if(r && r.escrowId){
       STATE.pendingMatches.push({
@@ -369,7 +387,7 @@ async function lockInFight(){
       goto("fightResolve",{fighter,opponent,booked:true,expiresAt:market.expiryMs});
       return;
     }
-    alert("Could not stake FATE — the match was not booked for an unknown reason. Try again.");
+    showModal("Could not stake FATE — the match was not booked for an unknown reason. Try again.");
     render();
   } finally {
     BET_IN_FLIGHT = false;
@@ -384,8 +402,8 @@ async function settlePending(escrowId){
   const m = STATE.pendingMatches[idx];
   let r;
   try{ r = await Fate.settle(escrowId); }
-  catch(err){ alert(friendlyError(err)); render(); return; }
-  if(!r){ alert("Settlement failed — please try again."); render(); return; }
+  catch(err){ showModal(friendlyError(err), () => render()); return; }
+  if(!r){ showModal("Settlement failed — please try again.", () => render()); return; }
   if(r.voided){ m._check = {voided:true}; saveNow(); render(); return; }
   recordMatchHistory(m, r);
   STATE.pendingMatches.splice(idx,1);
@@ -410,10 +428,10 @@ async function rematchPending(escrowId){
   try{
     market = await Fate.findMarket();
   }catch(err){
-    alert(friendlyError(err));
+    showModal(friendlyError(err));
     render(); return;
   }
-  if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
+  if(!market){ showModal("No active DreamDEX market right now. Try again shortly.", () => render()); return; }
   const entryOdds = (old.side === "YES") ? ((market.odds != null) ? market.odds : 0.5) : 1 - ((market.odds != null) ? market.odds : 0.5);
   const meta = { matchTitle: old.title, fighter: (old.title||"").split(" vs ")[0], opponent: (old.title||"").split(" vs ")[1]||"", entryOdds };
   if(typeof AudioMgr!=="undefined") AudioMgr.playBell();
@@ -421,7 +439,7 @@ async function rematchPending(escrowId){
   try{
     r = await Fate.stake(old.kind, old.side, market.marketId, meta, new Date(market.expiryMs).toISOString());
   }catch(err){
-    alert("Rematch failed: "+friendlyError(err)+". Original escrow left untouched.");
+    showModal("Rematch failed: "+friendlyError(err)+". Original escrow left untouched.");
     render(); return;
   }
   if(r && r.escrowId){
@@ -433,14 +451,14 @@ async function rematchPending(escrowId){
       pick:old.pick, expiresAt:market.expiryMs, placedAt:Date.now(), _check:null,
     });
     saveNow();
-  } else { alert("Rematch failed: could not stake FATE. Original escrow left untouched."); }
+  } else { showModal("Rematch failed: could not stake FATE. Original escrow left untouched."); }
   render();
 }
 
 /* Voided match → cancel: Teller re-verifies the void and refunds the stake. */
 async function cancelPending(escrowId){
   const r = await Fate.cancel(escrowId);
-  if(!r){ alert("Cancel failed (is the market really voided?)"); render(); return; }
+  if(!r){ showModal("Cancel failed (is the market really voided?)", () => render()); return; }
   const idx = STATE.pendingMatches.findIndex(m=>m.escrowId===escrowId);
   if(idx>=0){
     const m = STATE.pendingMatches[idx];
@@ -642,7 +660,7 @@ async function resolveSideBetChoice(side){
   const a = pair[0], b = pair[1];
   const picked = pair.find(p=>p.id===target) || (target===a.id?a:(target===b.id?b:null));
   if(!picked || !pair){ goto("side",{pair:null}); return; }
-  if(!Fate.live){ alert("A valid wallet connection is required to place a side bet."); goto("splash"); return; }
+  if(!Fate.live){ showModal("A valid wallet connection is required to place a side bet.", () => goto("splash")); return; }
   const marketSide = (target===a.id) ? "YES" : "NO";
   const title = a.name+" vs "+b.name;
   /* Two-stage: user must confirm on the SIDE CONFIRM screen before we stake.
@@ -662,17 +680,17 @@ async function resolveSideBetChoice(side){
     try{
       market = await Fate.findMarket();
     }catch(err){
-      alert(friendlyError(err));
+      showModal(friendlyError(err));
       render(); return;
     }
-    if(!market){ alert("No active DreamDEX market right now. Try again shortly."); render(); return; }
+    if(!market){ showModal("No active DreamDEX market right now. Try again shortly.", () => render()); return; }
     const entryOdds = (marketSide === "YES") ? ((market.odds != null) ? market.odds : 0.5) : 1 - ((market.odds != null) ? market.odds : 0.5);
     const meta = { matchTitle:title, fighter:(target===a.id)?a.name:b.name, opponent:(target===a.id)?b.name:a.name, entryOdds };
     let r;
     try{
       r = await Fate.stake("side_bet", marketSide, market.marketId, meta, new Date(market.expiryMs).toISOString());
     }catch(err){
-      alert("Could not stake FATE — "+friendlyError(err)+". The bet was not placed.");
+      showModal("Could not stake FATE — "+friendlyError(err)+". The bet was not placed.");
       render(); return;
     }
     if(r && r.escrowId){
@@ -685,7 +703,7 @@ async function resolveSideBetChoice(side){
       goto("sideResolve",{side:target, pair, pending:true, expiresAt:market.expiryMs});
       return;
     }
-    alert("Could not stake FATE — the bet was not placed for an unknown reason. Try again.");
+    showModal("Could not stake FATE — the bet was not placed for an unknown reason. Try again.");
     render();
   } finally {
     BET_IN_FLIGHT = false;
@@ -1053,7 +1071,7 @@ async function onAction(e){
       const btn = e.currentTarget; btn.disabled = true; btn.textContent = "Waiting for wallet…";
       Fate.buy(tusdc)
         .then(() => { saveNow(); render(); })
-        .catch(err => { alert(friendlyError(err)); btn.disabled = false; btn.textContent = pack.amount+" FATE — "+pack.price; });
+        .catch(err => { showModal(friendlyError(err)); btn.disabled = false; btn.textContent = pack.amount+" FATE — "+pack.price; });
     }
     return;
   }
@@ -1061,11 +1079,11 @@ async function onAction(e){
     const input = document.getElementById('cashout-amt');
     const amt = parseInt(input.value,10);
     if(!amt || amt<=0){ return; }
-    if(amt>STATE.fate){ alert("Insufficient FATE balance — you have "+STATE.fate+" FATE."); return; }
+    if(amt>STATE.fate){ showModal("Insufficient FATE balance — you have "+STATE.fate+" FATE."); return; }
     if(!Fate.live){ goto("store", {msg:"Connect a wallet first."}); return; }
     Fate.cashout(amt)
-      .then(() => { alert("Cash out successful! tUSDC has been sent to your wallet."); render(); })
-      .catch(err => alert(friendlyError(err)));
+      .then(() => { showModal("Cash out successful! tUSDC has been sent to your wallet."); render(); })
+      .catch(err => showModal(friendlyError(err)));
     return;
   }
 }
